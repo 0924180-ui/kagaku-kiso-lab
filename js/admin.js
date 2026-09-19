@@ -115,97 +115,132 @@ function latestByUser(){
 /* =========================
    学習データ
 ========================= */
-
 function snapshotData(snapshot){
-  const data=
-    snapshot?.data&&typeof snapshot.data==='object'
+  const data =
+    snapshot?.data &&
+    typeof snapshot.data === 'object'
       ? snapshot.data
       : {};
 
-  const attempts=
-    data.attempts&&typeof data.attempts==='object'
+  const attempts =
+    data.attempts &&
+    typeof data.attempts === 'object'
       ? data.attempts
       : {};
 
   /*
    * 解いた問題数
    *
-   * 同じ問題を複数回解いた場合も、
-   * その回数をすべて加算する。
+   * progress_snapshots に保存されている attempt_count は
+   * 各問題の count を全部合計した値。
    *
    * 例:
-   * Aを3回 + Bを2回 = 5問
+   * Aを1回
+   * Bを3回
+   * Cを2回
+   *
+   * → 6問
    */
-  const attemptCount=
+  const calculatedAttemptCount =
     Object.values(attempts).reduce(
-      (sum,att)=>
-        sum+(Number(att?.count)||0),
+      (total, att) =>
+        total + (Number(att?.count) || 0),
       0
     );
 
-  const mastery=
+  /*
+   * 定着度は supabase-sync.js が保存した
+   * progress_snapshots.mastery をそのまま使用する。
+   *
+   * 管理者側で別計算すると、生徒側と数字がズレるため。
+   */
+  const storedMastery =
     Number(snapshot?.mastery);
 
-  const totalTime=
-    Number(snapshot?.total_time_seconds);
+  const mastery =
+    Number.isFinite(storedMastery)
+      ? storedMastery
+      : Mastery.overallScore(
+          KagakuData.questions,
+          attempts
+        );
 
-  const storedUnits=
-    snapshot?.unit_mastery&&
-    typeof snapshot.unit_mastery==='object'
+  /*
+   * 解答回数もSupabase保存値を優先。
+   * ただし古いデータなどで保存値がない場合は
+   * attempts から正しく再計算する。
+   */
+  const storedAttemptCount =
+    Number(snapshot?.attempt_count);
+
+  const attemptCount =
+    Number.isFinite(storedAttemptCount)
+      ? storedAttemptCount
+      : calculatedAttemptCount;
+
+  const storedTime =
+    Number(
+      snapshot?.total_time_seconds
+    );
+
+  const totalTime =
+    Number.isFinite(storedTime)
+      ? storedTime
+      : Number(
+          data.totalTimeSeconds
+        ) || 0;
+
+  /*
+   * 単元別定着度もSupabaseに保存されている値を優先。
+   */
+  const storedUnits =
+    snapshot?.unit_mastery &&
+    typeof snapshot.unit_mastery === 'object'
       ? snapshot.unit_mastery
       : {};
 
-  const unitMastery=
+  const unitMastery =
     Object.keys(storedUnits).length
       ? storedUnits
       : {};
 
-  if(!Object.keys(unitMastery).length){
-    (KagakuData.units||[]).forEach(
-      unit=>{
-        unitMastery[unit.id]=
+  /*
+   * 古いデータでunit_masteryが存在しない場合だけ再計算。
+   */
+  if(
+    !Object.keys(unitMastery).length
+  ){
+    (KagakuData.units || []).forEach(
+      unit => {
+        unitMastery[unit.id] =
           Mastery.unitScore(
             unit.id,
             KagakuData.questions,
             attempts
-          )
+          );
       }
     );
   }
 
   return {
-    mastery:
-      Number.isFinite(mastery)
-        ? mastery
-        : Mastery.overallScore(
-            KagakuData.questions,
-            attempts
-          ),
-
-    attempt_count:
-      attemptCount,
-
-    total_time_seconds:
-      Number.isFinite(totalTime)
-        ? totalTime
-        : Number(data.totalTimeSeconds)||0,
+    mastery,
+    attempt_count: attemptCount,
+    total_time_seconds: totalTime,
 
     last_study_at:
-      snapshot?.last_study_at||
+      snapshot?.last_study_at ||
       (
         data.lastStudyDate
           ? new Date(
-              data.lastStudyDate+
+              data.lastStudyDate +
               'T23:59:59'
             ).toISOString()
           : null
       ),
 
-    unit_mastery:
-      unitMastery,
+    unit_mastery: unitMastery,
 
     data,
-
     attempts
   };
 }
