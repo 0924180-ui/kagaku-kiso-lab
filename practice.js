@@ -1,5 +1,8 @@
 document.addEventListener("DOMContentLoaded", async () => {
+  // 問題取得だけでなく、Supabaseのログイン状態と進捗復元も完了してから演習を開始します。
+  if (window.KagakuCloud?.authReady) await window.KagakuCloud.authReady;
   if (window.KagakuCloud?.questionsReady) await window.KagakuCloud.questionsReady;
+
   if (!window.Recommendations) console.warn("Recommendations not loaded");
   const unitSelect = document.getElementById("filter-unit");
   const countSelect = document.getElementById("filter-count");
