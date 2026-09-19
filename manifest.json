@@ -1,0 +1,9 @@
+{
+  "name": "化学基礎ラボ",
+  "short_name": "化学基礎",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "icons": []
+}

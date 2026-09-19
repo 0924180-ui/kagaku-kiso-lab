@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title id="page-title">単元 | 化学基礎ラボ</title>
+<meta name="description" content="化学基礎の単元別学習ページ。解説・例題・練習問題でしっかり学習できます。">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2563eb">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="study">
+
+<header id="site-header"></header>
+
+<main>
+  <div class="container">
+    <nav class="breadcrumb" aria-label="パンくずリスト">
+      <a href="./study.html">単元一覧</a><span aria-hidden="true">›</span><span id="breadcrumb-current">単元</span>
+    </nav>
+
+    <div class="unit-layout">
+      <div class="unit-main">
+        <section class="page-header unit-page-header" aria-label="単元概要">
+          <div class="eyebrow" id="unit-eyebrow">単元</div>
+          <h1 id="unit-title">読み込み中…</h1>
+          <p class="lead" id="unit-summary"></p>
+        </section>
+
+        <div class="tabs" role="tablist" id="unit-tabs" aria-label="学習コンテンツ切り替え">
+          <button class="tab-btn" role="tab" id="tab-explanation" data-tab="explanation" aria-selected="true" aria-controls="panel-explanation">解説</button>
+          <button class="tab-btn" role="tab" id="tab-example" data-tab="example" aria-selected="false" aria-controls="panel-example">例題</button>
+          <button class="tab-btn" role="tab" id="tab-practice" data-tab="practice" aria-selected="false" aria-controls="panel-practice">練習問題</button>
+          <button class="tab-btn" role="tab" id="tab-progress" data-tab="progress" aria-selected="false" aria-controls="panel-progress">学習進捗</button>
+        </div>
+
+        <div class="tab-panel is-active" id="panel-explanation" role="tabpanel" aria-labelledby="tab-explanation">
+          <div class="panel explanation-block" id="explanation-content">読み込み中...</div>
+        </div>
+
+        <div class="tab-panel" id="panel-example" role="tabpanel" aria-labelledby="tab-example" hidden>
+          <div class="panel">
+            <div class="example-box" id="example-box">
+              <div class="example-question" id="example-question"></div>
+              <button class="btn btn-outline btn-sm" id="reveal-solution-btn">解答・解説を見る</button>
+              <div class="example-solution" id="example-solution" style="display:none; margin-top:16px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="panel-practice" role="tabpanel" aria-labelledby="tab-practice" hidden>
+          <div class="panel">
+            <p style="margin-bottom:16px;">この単元の練習問題を、難易度を選んで解くことができます。</p>
+            <div class="btn-group" id="practice-difficulty-buttons"></div>
+          </div>
+        </div>
+
+        <div class="tab-panel" id="panel-progress" role="tabpanel" aria-labelledby="tab-progress" hidden>
+          <div class="panel">
+            <div class="progress-label" style="margin-bottom:6px;">単元の学習進捗</div>
+            <div class="progress-bar" style="margin-bottom:6px;"><div class="fill" id="unit-progress-fill" style="width:0%;"></div></div>
+            <div class="progress-label" id="unit-progress-text">進捗 0%</div>
+            <div style="margin-top:24px;">
+              <table class="records-table">
+                <tbody>
+                  <tr><th scope="row">解説を読んだ</th><td id="progress-explanation">—</td></tr>
+                  <tr><th scope="row">例題を確認した</th><td id="progress-example">—</td></tr>
+                  <tr><th scope="row">解いた問題数</th><td id="progress-attempts">—</td></tr>
+                  <tr><th scope="row">この単元の定着度</th><td id="progress-accuracy">—</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="unit-rail" id="unit-rail" aria-label="この単元の補助情報">
+        <div class="rail-card rail-progress">
+          <div class="rail-kicker">この単元の進捗</div>
+          <div class="rail-progress-value" id="rail-progress-value">0%</div>
+          <div class="progress-bar"><div class="fill" id="rail-progress-fill" style="width:0%"></div></div>
+          <p id="rail-progress-note">解説・例題・問題を進めよう</p>
+        </div>
+        <div class="rail-card">
+          <div class="rail-kicker">重要ポイント</div>
+          <ol class="rail-points" id="rail-points"><li>読み込み中…</li></ol>
+        </div>
+        <div class="rail-card rail-warning">
+          <div class="rail-kicker">入試でよくあるミス</div>
+          <p id="rail-warning-text">この単元の注意点を確認しましょう。</p>
+        </div>
+        <button class="rail-complete" id="rail-complete-btn" type="button">✓ この単元を学習済みにする</button>
+        <a class="rail-bookmark" href="javascript:void(0)" id="rail-bookmark">☆ 復習候補にする</a>
+      </aside>
+    </div>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="container">化学基礎ラボ — 大学受験に向けた化学基礎の学習サイト</div>
+</footer>
+
+<nav id="mobile-tabbar" aria-label="モバイルナビゲーション"></nav>
+
+<script src="js/supabase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/data.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/mastery.js"></script>
+<script src="js/supabase-sync.js"></script>
+<script src="js/nav.js"></script>
+<script src="js/unit.js"></script>
+</body>
+</html>

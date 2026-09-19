@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>アカウント | 化学基礎ラボ</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+.auth-wrap{max-width:520px;margin:48px auto;padding:0 16px}.auth-card{background:var(--panel-bg);border:1px solid var(--border-color);border-radius:16px;padding:26px;box-shadow:var(--shadow-sm)}
+.auth-tabs{display:flex;gap:8px;margin-bottom:20px}.auth-tab{flex:1}.auth-tab.active{background:var(--primary-light);color:var(--primary)}.auth-form{display:grid;gap:12px}.auth-input{width:100%;box-sizing:border-box;padding:11px 12px;border:1px solid var(--border-color);border-radius:9px;background:var(--panel-bg);color:var(--text-primary);margin-top:5px}.auth-note{font-size:.84rem;color:var(--text-secondary);line-height:1.7}.auth-status{padding:11px 12px;border-radius:9px;background:var(--primary-light);color:var(--text-secondary);margin-bottom:14px}.auth-status.error{background:var(--danger-light);color:var(--danger)}.account-box{display:grid;gap:14px}.account-email{font-weight:700}.auth-actions{display:flex;gap:10px;flex-wrap:wrap}
+</style>
+</head>
+<body data-page="account">
+<header id="site-header"></header>
+<main><div class="auth-wrap">
+<section class="auth-card" id="auth-view">
+  <div class="eyebrow">アカウント</div><h1>学習進捗を保存する</h1>
+  <p class="lead">アカウントを作ると、問題の定着度や学習記録をクラウドに保存して、別の端末からも続きから学習できます。</p>
+  <div class="auth-tabs"><button class="btn btn-outline auth-tab active" id="tab-login">ログイン</button><button class="btn btn-outline auth-tab" id="tab-signup">新規登録</button></div>
+  <div id="auth-status" class="auth-status">接続設定を確認しています…</div><p id="setup-link" class="auth-note" hidden><a href="setup.html">Supabaseの初回設定をする</a></p>
+  <form id="login-form" class="auth-form">
+    <label>メールアドレス<input class="auth-input" id="login-email" type="email" required autocomplete="username"></label>
+    <label>パスワード<input class="auth-input" id="login-password" type="password" required minlength="6" autocomplete="current-password"></label>
+    <button class="btn btn-primary" type="submit">ログイン</button>
+  </form>
+  <form id="signup-form" class="auth-form" hidden>
+    <label>表示名<input class="auth-input" id="signup-name" type="text" maxlength="30" required placeholder="例：田中太郎"></label>
+    <label>メールアドレス<input class="auth-input" id="signup-email" type="email" required autocomplete="email"></label>
+    <label>パスワード<input class="auth-input" id="signup-password" type="password" required minlength="6" autocomplete="new-password"></label>
+    <button class="btn btn-primary" type="submit">アカウントを作成</button>
+  </form>
+  <p class="auth-note">パスワードは管理者画面には表示されません。学習進捗の共有にはSupabaseを利用します。</p>
+</section>
+<section class="auth-card" id="account-view" hidden>
+  <div class="eyebrow">ログイン中</div><h1>あなたのアカウント</h1>
+  <div class="account-box"><div class="account-email" id="account-email"></div><p class="auth-note">このアカウントの学習記録はクラウドへ自動同期されています。</p><div class="auth-actions"><a href="index.html" class="btn btn-primary">学習に戻る</a><button class="btn btn-outline" id="logout-btn">ログアウト</button></div></div>
+</section>
+</div></main>
+<nav id="mobile-tabbar" aria-label="モバイルナビゲーション"></nav>
+<script src="js/supabase-config.js"></script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/data.js"></script><script src="js/storage.js"></script><script src="js/mastery.js"></script><script src="js/supabase-sync.js"></script><script src="js/nav.js"></script>
+<script>
+const $=id=>document.getElementById(id); let mode='login';
+function status(text,error=false){$('auth-status').textContent=text;$('auth-status').className='auth-status'+(error?' error':'')}
+function setMode(next){mode=next;$('login-form').hidden=next!=='login';$('signup-form').hidden=next!=='signup';$('tab-login').classList.toggle('active',next==='login');$('tab-signup').classList.toggle('active',next==='signup');status(next==='login'?'ログインしてください。':'新しいアカウントを作成してください。')}
+$('tab-login').onclick=()=>setMode('login');$('tab-signup').onclick=()=>setMode('signup');
+$('login-form').onsubmit=async e=>{e.preventDefault();status('ログインしています…');const {error}=await KagakuCloud.signIn($('login-email').value.trim(),$('login-password').value);if(error)status(error.message.includes('Invalid login')?'メールアドレスまたはパスワードが違います。':error.message,true)};
+$('signup-form').onsubmit=async e=>{e.preventDefault();status('アカウントを作成しています…');const {data,error}=await KagakuCloud.signUp($('signup-email').value.trim(),$('signup-password').value,$('signup-name').value.trim());if(error)status(error.message,true);else if(data.session)status('登録しました。学習を開始できます。');else status('登録しました。確認メールが届く設定の場合は、メール確認後にログインしてください。')};
+$('logout-btn').onclick=async()=>{await KagakuCloud.signOut();location.reload()};
+document.addEventListener('kagaku-auth-change',e=>{const u=e.detail.user;if(u){$('auth-view').hidden=true;$('account-view').hidden=false;$('account-email').textContent=u.email||'ログイン中'}else if(KagakuCloud.configured()){status('ログインまたは新規登録をしてください。')}});
+if(!KagakuCloud.configured()){status('Supabaseの接続設定がありません。下の初回設定から入力してください。',true);$('setup-link').hidden=false;}
+</script>
+</body></html>

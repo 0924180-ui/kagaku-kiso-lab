@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>問題演習 | 化学基礎ラボ</title>
+<meta name="description" content="化学基礎の4択問題演習。キーボード操作(1~4キー)にも対応。">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2563eb">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="practice">
+
+<header id="site-header"></header>
+
+<main>
+  <div class="container">
+    <section class="page-header" aria-label="ページヘッダー">
+      <div class="eyebrow">問題演習</div>
+      <h1>4択問題で力を試す</h1>
+      <p class="lead">単元・難易度を選んで、実践的な4択問題を解きましょう。<br><small class="key-hint">💡 キーボード数字キー[1-4]で選択肢を選び、[Enter]で進行できます</small></p>
+    </section>
+
+    <section aria-label="出題条件設定">
+      <div class="filter-bar">
+        <div class="filter-field">
+          <label for="filter-unit">単元</label>
+          <select id="filter-unit">
+            <option value="all">すべての単元</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label for="filter-count">出題数</label>
+          <select id="filter-count">
+            <option value="10">10問</option>
+            <option value="20">20問</option>
+            <option value="30">30問</option>
+            <option value="50">50問</option>
+            <option value="all">すべて</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label for="filter-difficulty">難易度</label>
+          <select id="filter-difficulty">
+            <option value="all">すべての難易度</option>
+            <option value="basic">基礎</option>
+            <option value="standard">標準</option>
+            <option value="exam">入試</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" id="start-session-btn">この条件で出題する</button>
+      </div>
+    </section>
+
+    <section aria-label="問題演習エリア">
+      <div id="session-area" aria-live="polite">
+        <!-- JSで生成 -->
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="container">化学基礎ラボ — 大学受験に向けた化学基礎の学習サイト</div>
+</footer>
+
+<nav id="mobile-tabbar" aria-label="モバイルナビゲーション"></nav>
+
+<script src="js/supabase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/data.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/mastery.js"></script>
+<script src="js/recommendations.js"></script>
+<script src="js/supabase-sync.js"></script>
+<script src="js/nav.js"></script>
+<script src="js/practice.js"></script>
+</body>
+</html>

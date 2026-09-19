@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>学習記録 | 化学基礎ラボ</title>
+<meta name="description" content="学習時間・定着度のグラフ表示、データバックアップ・復元機能を備えた学習記録ダッシュボード。">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2563eb">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="records">
+
+<header id="site-header"></header>
+
+<main>
+  <div class="container">
+    <section class="page-header" aria-label="ページヘッダー">
+      <div class="eyebrow">学習記録</div>
+      <h1>これまでの学習を振り返る</h1>
+      <p class="lead">総学習時間と定着度を確認し、まだ定着していない単元を重点的に復習しましょう。</p>
+    </section>
+
+    <section aria-label="総合学習統計">
+      <div class="stat-grid" aria-live="polite">
+        <div class="stat-card">
+          <div class="stat-label">総学習時間</div>
+          <div class="stat-value" id="r-total-time">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">解いた問題数</div>
+          <div class="stat-value" id="r-total-count">—<span class="unit">問</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">総合定着度</div>
+          <div class="stat-value" id="r-total-mastery">—<span class="unit">%・—</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">連続学習日数</div>
+          <div class="stat-value" id="r-streak">—<span class="unit">日</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="chart-heading">
+      <h2 id="chart-heading">単元別定着度レーダーチャート</h2>
+      <div class="panel" style="max-width: 600px; margin: 0 auto 32px auto; padding: 16px;">
+        <canvas id="masteryChart" width="400" height="300"></canvas>
+      </div>
+    </section>
+
+    <section aria-labelledby="unit-table-heading">
+      <h2 id="unit-table-heading">単元別 定着度・進捗</h2>
+      <div class="panel">
+        <table class="records-table" id="unit-table">
+          <thead>
+            <tr>
+              <th scope="col">単元</th>
+              <th scope="col">解いた問題数</th>
+              <th scope="col">定着度</th>
+              <th scope="col">学習進捗</th>
+            </tr>
+          </thead>
+          <tbody aria-live="polite"><!-- JSで生成 --></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section aria-labelledby="weak-units-heading">
+      <h2 id="weak-units-heading">苦手単元</h2>
+      <div id="weak-units" aria-live="polite"><!-- JSで生成 --></div>
+    </section>
+
+    <section aria-labelledby="data-management-heading">
+      <h2 id="data-management-heading">データ管理（バックアップ・復元）</h2>
+      <div class="panel">
+        <p style="margin-bottom: 12px;">学習データをJSON形式でバックアップ・書き出し・読み込みができます。</p>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+          <button class="btn btn-outline" id="export-data-btn">📥 データをエクスポート</button>
+          <label class="btn btn-outline" style="cursor: pointer;">
+            📤 データをインポート
+            <input type="file" id="import-data-file" accept=".json" style="display: none;">
+          </label>
+          <button class="btn btn-outline btn-danger" id="reset-data-btn">🗑️ データをリセット</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="container">化学基礎ラボ — 大学受験に向けた化学基礎の学習サイト</div>
+</footer>
+
+<nav id="mobile-tabbar" aria-label="モバイルナビゲーション"></nav>
+
+<script src="js/supabase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/data.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/mastery.js"></script>
+<script src="js/supabase-sync.js"></script>
+<script src="js/nav.js"></script>
+<script src="js/records.js"></script>
+</body>
+</html>

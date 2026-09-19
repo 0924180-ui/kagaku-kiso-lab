@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Supabase設定 | 化学基礎ラボ</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+.setup-wrap{max-width:620px;margin:48px auto;padding:0 16px}.setup-card{background:var(--panel-bg);border:1px solid var(--border-color);border-radius:16px;padding:28px;box-shadow:var(--shadow-sm)}
+.setup-form{display:grid;gap:16px}.setup-input{width:100%;box-sizing:border-box;padding:12px;border:1px solid var(--border-color);border-radius:9px;background:var(--panel-bg);color:var(--text-primary);margin-top:6px;font-family:monospace}.setup-note{font-size:.88rem;color:var(--text-secondary);line-height:1.75}.setup-status{padding:12px;border-radius:9px;background:var(--primary-light);color:var(--text-secondary);line-height:1.6}.setup-status.error{background:var(--danger-light);color:var(--danger)}.setup-actions{display:flex;gap:10px;flex-wrap:wrap}.danger-note{border-left:4px solid var(--danger);padding-left:12px}
+</style>
+</head>
+<body data-page="account">
+<header id="site-header"></header>
+<main><div class="setup-wrap"><section class="setup-card"><div class="eyebrow">自動設定</div><h1>Supabaseは設定済みです</h1><p class="lead">このサイトはVercelの環境変数からSupabaseの接続情報を自動設定します。友だちはURLを開くだけで利用できます。</p><div class="setup-status">接続設定はサイト側で用意されています。</div><p class="setup-note">ブラウザに公開してよいのはSupabaseのPublishable key（旧anon key）です。Secret key / service_role keyはここには設定しないでください。</p><div class="setup-actions"><a class="btn btn-primary" href="auth.html">アカウント設定へ</a><a class="btn btn-outline" href="index.html">学習サイトへ</a></div></section></div></main>
+<nav id="mobile-tabbar" aria-label="モバイルナビゲーション"></nav>
+<script src="js/supabase-config.js"></script><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/nav.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem('kagaku_lab_supabase_config') || '{}'); } catch(e) {}
+  $('url').value = saved.url || '';
+  $('key').value = saved.anonKey || '';
+
+  $('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const url = $('url').value.trim().replace(/\/+$/, '');
+    const key = $('key').value.trim();
+
+    if (!/^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(url)) {
+      $('status').textContent = 'Project URLの形式を確認してください。例: https://xxxxxxxx.supabase.co';
+      $('status').className = 'setup-status error';
+      return;
+    }
+    if (!key) {
+      $('status').textContent = 'Publishable key / anon keyを入力してください。';
+      $('status').className = 'setup-status error';
+      return;
+    }
+
+    $('status').textContent = '接続を確認しています…';
+    $('status').className = 'setup-status';
+
+    try {
+      const res = await fetch(url + '/auth/v1/settings', {
+        method: 'GET',
+        headers: { 'apikey': key, 'Authorization': 'Bearer ' + key }
+      });
+
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+
+      localStorage.setItem(
+        'kagaku_lab_supabase_config',
+        JSON.stringify({ url, anonKey: key })
+      );
+      window.SUPABASE_URL = url;
+      window.SUPABASE_ANON_KEY = key;
+
+      $('status').textContent = '✅ 接続成功！設定をこのブラウザに保存しました。次は「アカウント設定へ」を押してください。';
+      $('status').className = 'setup-status';
+    } catch (err) {
+      $('status').textContent = '❌ 接続できませんでした。Project URLとPublishable key / anon keyを確認してください。';
+      $('status').className = 'setup-status error';
+    }
+  });
+})();
+</script>
+</body></html>

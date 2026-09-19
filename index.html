@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ホーム | 化学基礎ラボ</title>
+<meta name="description" content="大学受験・共通テストに向けた化学基礎の学習プラットフォーム。学ぶ・解く・復習するのサイクルで効率よく基礎力を定着させます。">
+<meta property="og:title" content="ホーム | 化学基礎ラボ">
+<meta property="og:description" content="大学受験・共通テストに向けた化学基礎の学習プラットフォーム。">
+<meta property="og:type" content="website">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2563eb">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body data-page="home">
+
+<header id="site-header"></header>
+
+<main>
+  <div class="container">
+    <section class="page-header home-actions" aria-label="学習メニュー">
+      <h1 class="sr-only">化学基礎ラボ ホーム</h1>
+      <div class="hero-cta">
+        <a href="./study.html" class="btn btn-primary">学習を始める</a>
+        <a href="./practice.html" class="btn btn-outline">問題を解く</a>
+        <a href="./review.html" class="btn btn-outline">復習する</a>
+      </div>
+    </section>
+
+    <section aria-labelledby="announcement-heading"><div class="section-title-row"><h2 id="announcement-heading">お知らせ</h2></div><div id="announcements" class="panel" aria-live="polite">読み込み中...</div></section>
+
+    <section aria-labelledby="today-stats-heading">
+      <div class="section-title-row">
+        <h2 id="today-stats-heading">今日の学習状況</h2>
+      </div>
+      <div class="stat-grid" id="today-stats" aria-live="polite">
+        <div class="stat-card">
+          <div class="stat-label">総学習時間</div>
+          <div class="stat-value" id="stat-total-time">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">今日解いた問題数</div>
+          <div class="stat-value" id="stat-today-count">—<span class="unit">問</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">今日の定着度</div>
+          <div class="stat-value" id="stat-today-mastery">—<span class="unit">%・—</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">連続学習日数</div>
+          <div class="stat-value" id="stat-streak">—<span class="unit">日</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="goal-heading">
+      <div class="section-title-row"><h2 id="goal-heading">今日の目標</h2><button class="btn btn-outline btn-sm" id="edit-goal-btn">目標を変更</button></div>
+      <div id="goal-panel" aria-live="polite"></div>
+    </section>
+
+    <section aria-labelledby="recommended-heading">
+      <div class="section-title-row">
+        <h2 id="recommended-heading">次におすすめの学習</h2>
+      </div>
+      <div id="recommended-study" aria-live="polite">
+        <div class="loading-state">読み込み中...</div>
+      </div>
+    </section>
+
+    <section aria-labelledby="unit-progress-heading">
+      <div class="section-title-row">
+        <h2 id="unit-progress-heading">単元別の進捗</h2>
+        <a href="./study.html" class="link-more">単元一覧へ &rarr;</a>
+      </div>
+      <div class="unit-list" id="unit-progress-list" aria-live="polite">
+        <div class="loading-state">進捗データを読み込み中...</div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="container">化学基礎ラボ — 大学受験に向けた化学基礎の学習サイト</div>
+</footer>
+
+<nav id="mobile-tabbar" aria-label="モバイルナビゲーション"></nav>
+
+<script src="js/supabase-config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/data.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/mastery.js"></script>
+<script src="js/recommendations.js"></script>
+<script src="js/supabase-sync.js"></script>
+<script src="js/nav.js"></script>
+<script src="js/home.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  }
+</script>
+</body>
+</html>
