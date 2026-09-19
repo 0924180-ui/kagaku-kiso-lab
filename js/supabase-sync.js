@@ -26,27 +26,38 @@
   }
 
   /*
-   * Supabaseから公開問題を取得して
-   * KagakuData.questions に追加する
+   * Supabaseから公開問題を取得
+   * data.jsのKagakuData.questionsへ追加
    */
   async function loadQuestions(){
     const c = getClient();
 
-    if (!c || !window.KagakuData?.questions) {
-      console.warn('SupabaseまたはKagakuDataが準備されていません。');
+    /*
+     * KagakuDataはwindow.KagakuDataではなく、
+     * data.jsでグローバル変数として定義されているため
+     * 直接KagakuDataを参照する。
+     */
+    if (
+      !c ||
+      typeof KagakuData === 'undefined' ||
+      !KagakuData.questions
+    ) {
+      console.warn(
+        'SupabaseまたはKagakuDataが準備されていません。'
+      );
       return;
     }
 
     try {
       /*
-       * 問題本体と公開状態を別々に取得します。
-       *
-       * 以前は Promise.all() を使っていたため、
-       * 公開状態の取得だけ失敗しても問題本体まで
-       * 読み込み失敗になっていました。
+       * 問題本体を取得
        */
-      const { data: rows, error } =
-        await c.rpc('get_published_questions');
+      const {
+        data: rows,
+        error
+      } = await c.rpc(
+        'get_published_questions'
+      );
 
       if (error) {
         console.error(
@@ -62,17 +73,26 @@
       );
 
       /*
-       * 既存の問題をMapに入れる
-       * → 同じIDの問題はクラウド側で上書き
+       * 現在ある問題をMapへ入れる
        */
       const byId = new Map(
-        (window.KagakuData.questions || [])
-          .map(q => [q.id, q])
+        KagakuData.questions.map(
+          q => [q.id, q]
+        )
       );
 
       /*
-       * Supabaseのデータ形式を
-       * KagakuDataの形式に変換
+       * Supabase形式
+       *
+       * unit_id
+       * answer_index
+       *
+       * ↓
+       *
+       * サイト形式
+       *
+       * unitId
+       * answerIndex
        */
       (rows || []).forEach(r => {
         const q = {
@@ -107,16 +127,18 @@
       });
 
       /*
-       * 公開状態・削除状態を確認
+       * 公開状態を確認
        *
-       * ここは問題本体の取得とは分離しています。
-       * この処理が失敗しても、取得済みの問題は利用できます。
+       * ここでエラーになっても
+       * 問題本体は読み込む。
        */
       try {
         const {
           data: statuses,
           error: statusError
-        } = await c.rpc('get_question_statuses');
+        } = await c.rpc(
+          'get_question_statuses'
+        );
 
         if (statusError) {
           console.warn(
@@ -144,23 +166,22 @@
       }
 
       /*
-       * 最終的な問題一覧をKagakuDataへ反映
+       * KagakuData.questionsを更新
        */
-      window.KagakuData.questions =
+      KagakuData.questions =
         Array.from(byId.values());
 
       console.log(
         'KagakuData.questions 更新完了:',
-        window.KagakuData.questions.length,
+        KagakuData.questions.length,
         '問'
       );
 
-      /*
-       * クラウド問題が実際に入ったか確認
-       */
       console.log(
         'クラウド問題:',
-        (rows || []).map(q => q.question)
+        (rows || []).map(
+          q => q.question
+        )
       );
 
     } catch(e) {
@@ -180,9 +201,9 @@
     if (
       !c ||
       !currentUser ||
-      !window.Storage ||
-      !window.Mastery ||
-      !window.KagakuData
+      typeof Storage === 'undefined' ||
+      typeof Mastery === 'undefined' ||
+      typeof KagakuData === 'undefined'
     ) {
       return;
     }
@@ -192,7 +213,8 @@
     syncing = true;
 
     try {
-      const data = Storage.getUserData();
+      const data =
+        Storage.getUserData();
 
       const unitMastery = {};
 
@@ -206,7 +228,9 @@
       });
 
       const values =
-        Object.values(data.attempts || {});
+        Object.values(
+          data.attempts || {}
+        );
 
       const mastery =
         values.length
@@ -229,7 +253,8 @@
       const lastStudy =
         data.lastStudyDate
           ? new Date(
-              data.lastStudyDate + 'T23:59:59'
+              data.lastStudyDate +
+              'T23:59:59'
             ).toISOString()
           : null;
 
@@ -237,26 +262,41 @@
         new Date().toISOString();
 
       const payload = {
-        user_id: currentUser.id,
+        user_id:
+          currentUser.id,
+
         mastery,
-        attempt_count: attemptCount,
+
+        attempt_count:
+          attemptCount,
+
         total_time_seconds:
-          Number(data.totalTimeSeconds) || 0,
-        last_study_at: lastStudy,
-        unit_mastery: unitMastery,
+          Number(
+            data.totalTimeSeconds
+          ) || 0,
+
+        last_study_at:
+          lastStudy,
+
+        unit_mastery:
+          unitMastery,
+
         data,
-        updated_at: now
+
+        updated_at:
+          now
       };
 
-      const { error } =
-        await c
-          .from('progress_snapshots')
-          .upsert(
-            payload,
-            {
-              onConflict: 'user_id'
-            }
-          );
+      const {
+        error
+      } = await c
+        .from('progress_snapshots')
+        .upsert(
+          payload,
+          {
+            onConflict: 'user_id'
+          }
+        );
 
       if (error) {
         console.warn(
@@ -265,10 +305,6 @@
         );
       }
 
-      /*
-       * 管理者が学習推移を確認できるよう、
-       * 1日1件の履歴を保存
-       */
       const recordedDate =
         data.lastStudyDate ||
         now.slice(0, 10);
@@ -279,14 +315,27 @@
         .from('progress_history')
         .upsert(
           {
-            user_id: currentUser.id,
-            recorded_date: recordedDate,
+            user_id:
+              currentUser.id,
+
+            recorded_date:
+              recordedDate,
+
             mastery,
-            attempt_count: attemptCount,
+
+            attempt_count:
+              attemptCount,
+
             total_time_seconds:
-              Number(data.totalTimeSeconds) || 0,
-            unit_mastery: unitMastery,
-            updated_at: now
+              Number(
+                data.totalTimeSeconds
+              ) || 0,
+
+            unit_mastery:
+              unitMastery,
+
+            updated_at:
+              now
           },
           {
             onConflict:
@@ -307,7 +356,10 @@
   }
 
   function queueSync(){
-    if (!currentUser || !restored) {
+    if (
+      !currentUser ||
+      !restored
+    ) {
       return;
     }
 
@@ -320,7 +372,7 @@
   }
 
   /*
-   * Supabaseに保存されている進捗を復元
+   * Supabaseから進捗を復元
    */
   async function restoreSnapshot(){
     const c = getClient();
@@ -328,7 +380,7 @@
     if (
       !c ||
       !currentUser ||
-      !window.Storage
+      typeof Storage === 'undefined'
     ) {
       restored = true;
       return;
@@ -341,7 +393,10 @@
       } = await c
         .from('progress_snapshots')
         .select('data')
-        .eq('user_id', currentUser.id)
+        .eq(
+          'user_id',
+          currentUser.id
+        )
         .maybeSingle();
 
       if (
@@ -372,7 +427,7 @@
   }
 
   /*
-   * 現在のログイン状態を確認
+   * 認証状態を確認
    */
   async function refreshAuth(){
     const c = getClient();
@@ -381,8 +436,9 @@
       return null;
     }
 
-    const { data } =
-      await c.auth.getSession();
+    const {
+      data
+    } = await c.auth.getSession();
 
     currentUser =
       data.session?.user || null;
@@ -466,7 +522,7 @@
   }
 
   /*
-   * 外部から利用できる機能
+   * 外部公開
    */
   window.KagakuCloud = {
     getClient,
@@ -484,7 +540,7 @@
 
   /*
    * ページ読み込み時に
-   * Supabaseの問題を取得
+   * Supabase問題を取得
    */
   window.KagakuCloud.questionsReady =
     loadQuestions();
@@ -502,7 +558,10 @@
       }
 
       c.auth.onAuthStateChange(
-        async (_event, session) => {
+        async (
+          _event,
+          session
+        ) => {
           currentUser =
             session?.user || null;
 
@@ -517,7 +576,8 @@
               'kagaku-auth-change',
               {
                 detail: {
-                  user: currentUser
+                  user:
+                    currentUser
                 }
               }
             )
@@ -532,7 +592,8 @@
           'kagaku-auth-change',
           {
             detail: {
-              user: currentUser
+              user:
+                currentUser
             }
           }
         )
