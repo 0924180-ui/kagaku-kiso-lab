@@ -28,3 +28,4 @@
 
 ## 注意
 ブラウザにはPublishable/anon keyだけを使用してください。service_role / Secret keyは絶対に入れません。
+Vercel deployment trigger
