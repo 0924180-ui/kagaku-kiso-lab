@@ -3312,3 +3312,74 @@ async function openAnnouncementEditor(
   $('announcement-editor')
     .hidden = false;
 }
+$('login-form').addEventListener('submit', login);
+$('logout-btn').addEventListener('click', async () => {
+  await supabaseClient.auth.signOut();
+  location.reload();
+});
+
+$('refresh-btn').addEventListener('click', loadData);
+$('student-search').addEventListener('input', render);
+$('student-filter').addEventListener('change', render);
+
+$('export-students-btn').addEventListener('click', exportStudentsCSV);
+
+$('add-question-btn').addEventListener('click', () => openEditor());
+$('close-editor').addEventListener('click', () => {
+  $('question-editor').hidden = true;
+});
+$('cancel-editor').addEventListener('click', () => {
+  $('question-editor').hidden = true;
+});
+
+$('question-form').addEventListener('submit', saveQuestion);
+$('question-search').addEventListener('input', renderQuestionAdmin);
+$('question-unit-filter').addEventListener('change', renderQuestionAdmin);
+$('question-status-filter').addEventListener('change', renderQuestionAdmin);
+$('refresh-questions-btn').addEventListener('click', loadQuestionAdminData);
+
+$('select-all-questions').addEventListener('change', e => {
+  document.querySelectorAll('.question-check').forEach(x => {
+    x.checked = e.target.checked;
+  });
+  updateSelectedCount();
+});
+
+$('bulk-publish-btn').addEventListener('click', () => bulkSet(true));
+$('bulk-unpublish-btn').addEventListener('click', () => bulkSet(false));
+$('bulk-delete-btn').addEventListener('click', () => bulkSet(false, true));
+
+$('export-questions-btn').addEventListener('click', exportQuestionsCSV);
+
+$('import-questions-input').addEventListener('change', e => {
+  if (e.target.files[0]) {
+    importQuestions(e.target.files[0]);
+  }
+  e.target.value = '';
+});
+
+$('new-test-btn').addEventListener('click', () => openTestEditor());
+$('close-test-editor').addEventListener('click', () => {
+  $('test-editor').hidden = true;
+});
+$('cancel-test-editor').addEventListener('click', () => {
+  $('test-editor').hidden = true;
+});
+$('test-form').addEventListener('submit', saveTest);
+
+$('new-announcement-btn').addEventListener(
+  'click',
+  () => openAnnouncementEditor()
+);
+
+$('close-announcement-editor').addEventListener('click', () => {
+  $('announcement-editor').hidden = true;
+});
+
+$('cancel-announcement-editor').addEventListener('click', () => {
+  $('announcement-editor').hidden = true;
+});
+
+$('announcement-form').addEventListener('submit', saveAnnouncement);
+
+setup();
