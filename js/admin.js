@@ -105,11 +105,103 @@ async function loadData(){
 }
 
 function latestByUser(){
-  const map=new Map();
-  for(const s of allSnapshots){
-    if(!map.has(s.user_id))map.set(s.user_id,s)
+  const map = new Map();
+
+  for (const s of allSnapshots) {
+    const id = String(s?.user_id || '');
+    if (!id) continue;
+
+    const prev = map.get(id);
+
+    if (!prev) {
+      map.set(id, s);
+      continue;
+    }
+
+    /*
+      progress_snapshots は同じユーザーについて複数行存在することがある。
+
+      管理者画面では、
+      1. attempts に入っている実際の解答回数
+      2. 保存されている attempt_count
+      3. 総学習時間
+      4. 更新日時
+
+      の順で、実際に学習データが入っているスナップショットを選ぶ。
+    */
+
+    const getAttemptCount = (snapshot) => {
+      const data =
+        snapshot?.data &&
+        typeof snapshot.data === 'object'
+          ? snapshot.data
+          : {};
+
+      const attempts =
+        data.attempts &&
+        typeof data.attempts === 'object'
+          ? data.attempts
+          : {};
+
+      const calculated = Object.values(attempts).reduce(
+        (total, att) =>
+          total + (Number(att?.count) || 0),
+        0
+      );
+
+      const stored = Number(snapshot?.attempt_count);
+
+      return Math.max(
+        calculated,
+        Number.isFinite(stored) ? stored : 0
+      );
+    };
+
+    const getTotalTime = (snapshot) => {
+      const data =
+        snapshot?.data &&
+        typeof snapshot.data === 'object'
+          ? snapshot.data
+          : {};
+
+      const stored = Number(snapshot?.total_time_seconds);
+      const dataTime = Number(data?.totalTimeSeconds);
+
+      return Math.max(
+        Number.isFinite(stored) ? stored : 0,
+        Number.isFinite(dataTime) ? dataTime : 0
+      );
+    };
+
+    const sAttempts = getAttemptCount(s);
+    const pAttempts = getAttemptCount(prev);
+
+    const sTime = getTotalTime(s);
+    const pTime = getTotalTime(prev);
+
+    const sUpdated =
+      new Date(s.updated_at || 0).getTime() || 0;
+
+    const pUpdated =
+      new Date(prev.updated_at || 0).getTime() || 0;
+
+    if (
+      sAttempts > pAttempts ||
+      (
+        sAttempts === pAttempts &&
+        sTime > pTime
+      ) ||
+      (
+        sAttempts === pAttempts &&
+        sTime === pTime &&
+        sUpdated > pUpdated
+      )
+    ) {
+      map.set(id, s);
+    }
   }
-  return map
+
+  return map;
 }
 
 /* =========================
