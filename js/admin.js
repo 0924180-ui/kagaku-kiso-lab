@@ -107,16 +107,98 @@ async function loadData(){
 function latestByUser(){
   const map = new Map();
 
-  for (const s of allSnapshots) {
-    const id = String(s?.user_id || '');
-    if (!id) continue;
+  function getAttemptCount(snapshot){
+    const data =
+      snapshot?.data &&
+      typeof snapshot.data === 'object'
+        ? snapshot.data
+        : {};
 
-    const prev = map.get(id);
+    const attempts =
+      data.attempts &&
+      typeof data.attempts === 'object'
+        ? data.attempts
+        : {};
 
-    if (!prev) {
-      map.set(id, s);
+    const fromAttempts = Object.values(attempts).reduce(
+      (sum, att) => sum + (Number(att?.count) || 0),
+      0
+    );
+
+    const stored = Number(snapshot?.attempt_count);
+
+    return Math.max(
+      fromAttempts,
+      Number.isFinite(stored) ? stored : 0
+    );
+  }
+
+  function getTotalTime(snapshot){
+    const data =
+      snapshot?.data &&
+      typeof snapshot.data === 'object'
+        ? snapshot.data
+        : {};
+
+    const stored = Number(snapshot?.total_time_seconds);
+    const fromData = Number(data?.totalTimeSeconds);
+
+    return Math.max(
+      Number.isFinite(stored) ? stored : 0,
+      Number.isFinite(fromData) ? fromData : 0
+    );
+  }
+
+  for(const snapshot of allSnapshots){
+    const userId = String(snapshot?.user_id || '');
+    if(!userId) continue;
+
+    const current = map.get(userId);
+
+    if(!current){
+      map.set(userId, snapshot);
       continue;
     }
+
+    const currentAttempts = getAttemptCount(current);
+    const newAttempts = getAttemptCount(snapshot);
+
+    const currentTime = getTotalTime(current);
+    const newTime = getTotalTime(snapshot);
+
+    const currentUpdated =
+      new Date(current?.updated_at || 0).getTime() || 0;
+
+    const newUpdated =
+      new Date(snapshot?.updated_at || 0).getTime() || 0;
+
+    /*
+      同じユーザーに複数のsnapshotがある場合、
+      実際の学習データが一番多いものを採用する。
+
+      優先順位:
+      1. 解答回数
+      2. 総学習時間
+      3. 更新日時
+    */
+    if(
+      newAttempts > currentAttempts ||
+      (
+        newAttempts === currentAttempts &&
+        newTime > currentTime
+      ) ||
+      (
+        newAttempts === currentAttempts &&
+        newTime === currentTime &&
+        newUpdated > currentUpdated
+      )
+    ){
+      map.set(userId, snapshot);
+    }
+  }
+
+  return map;
+}
 
     /*
       progress_snapshots は同じユーザーについて複数行存在することがある。
@@ -208,8 +290,20 @@ function latestByUser(){
    学習データ
 ========================= */
 function snapshotData(snapshot){
+  if(!snapshot){
+    return {
+      mastery: 0,
+      attempt_count: 0,
+      total_time_seconds: 0,
+      last_study_at: null,
+      unit_mastery: {},
+      data: {},
+      attempts: {}
+    };
+  }
+
   const data =
-    snapshot?.data &&
+    snapshot.data &&
     typeof snapshot.data === 'object'
       ? snapshot.data
       : {};
@@ -221,122 +315,122 @@ function snapshotData(snapshot){
       : {};
 
   /*
-   * 解いた問題数
-   *
-   * progress_snapshots に保存されている attempt_count は
-   * 各問題の count を全部合計した値。
-   *
-   * 例:
-   * Aを1回
-   * Bを3回
-   * Cを2回
-   *
-   * → 6問
-   */
-  const calculatedAttemptCount =
-    Object.values(attempts).reduce(
-      (total, att) =>
-        total + (Number(att?.count) || 0),
-      0
-    );
+    解答回数
+
+    例:
+    Aを1回
+    Bを3回
+    Cを2回
+
+    → 6問
+  */
+  const attemptsCount = Object.values(attempts).reduce(
+    (sum, att) => {
+      return sum + (Number(att?.count) || 0);
+    },
+    0
+  );
+
+  const savedAttemptCount =
+    Number(snapshot.attempt_count);
+
+  const attemptCount = Math.max(
+    attemptsCount,
+    Number.isFinite(savedAttemptCount)
+      ? savedAttemptCount
+      : 0
+  );
 
   /*
-   * 定着度は supabase-sync.js が保存した
-   * progress_snapshots.mastery をそのまま使用する。
-   *
-   * 管理者側で別計算すると、生徒側と数字がズレるため。
-   */
-  const storedMastery =
-    Number(snapshot?.mastery);
+    総学習時間
+  */
+  const snapshotTime =
+    Number(snapshot.total_time_seconds);
 
-  const mastery =
-    Number.isFinite(storedMastery)
-      ? storedMastery
-      : Mastery.overallScore(
-          KagakuData.questions,
-          attempts
-        );
+  const dataTime =
+    Number(data.totalTimeSeconds);
 
-  /*
-   * 解答回数もSupabase保存値を優先。
-   * ただし古いデータなどで保存値がない場合は
-   * attempts から正しく再計算する。
-   */
-  const storedAttemptCount =
-    Number(snapshot?.attempt_count);
+  const totalTimeSeconds = Math.max(
+    Number.isFinite(snapshotTime)
+      ? snapshotTime
+      : 0,
 
-  const attemptCount =
-    Number.isFinite(storedAttemptCount)
-      ? storedAttemptCount
-      : calculatedAttemptCount;
-
-  const storedTime =
-    Number(
-      snapshot?.total_time_seconds
-    );
-
-  const totalTime =
-    Number.isFinite(storedTime)
-      ? storedTime
-      : Number(
-          data.totalTimeSeconds
-        ) || 0;
+    Number.isFinite(dataTime)
+      ? dataTime
+      : 0
+  );
 
   /*
-   * 単元別定着度もSupabaseに保存されている値を優先。
-   */
-  const storedUnits =
-    snapshot?.unit_mastery &&
+    定着度
+  */
+  const savedMastery =
+    Number(snapshot.mastery);
+
+  let mastery;
+
+  if(Number.isFinite(savedMastery)){
+    mastery = savedMastery;
+  }else{
+    const values = Object.values(attempts);
+
+    mastery = values.length
+      ? Math.round(
+          values.reduce(
+            (sum, att) =>
+              sum + Mastery.questionScore(att),
+            0
+          ) / values.length
+        )
+      : 0;
+  }
+
+  /*
+    単元別定着度
+  */
+  const savedUnits =
+    snapshot.unit_mastery &&
     typeof snapshot.unit_mastery === 'object'
       ? snapshot.unit_mastery
       : {};
 
-  const unitMastery =
-    Object.keys(storedUnits).length
-      ? storedUnits
-      : {};
+  const unitMastery = {
+    ...savedUnits
+  };
+
+  if(!Object.keys(unitMastery).length){
+    (KagakuData.units || []).forEach(unit => {
+      unitMastery[unit.id] =
+        Mastery.unitScore(
+          unit.id,
+          KagakuData.questions,
+          attempts
+        );
+    });
+  }
 
   /*
-   * 古いデータでunit_masteryが存在しない場合だけ再計算。
-   */
-  if(
-    !Object.keys(unitMastery).length
-  ){
-    (KagakuData.units || []).forEach(
-      unit => {
-        unitMastery[unit.id] =
-          Mastery.unitScore(
-            unit.id,
-            KagakuData.questions,
-            attempts
-          );
-      }
-    );
+    最終学習日時
+  */
+  let lastStudyAt =
+    snapshot.last_study_at || null;
+
+  if(!lastStudyAt && data.lastStudyDate){
+    lastStudyAt =
+      new Date(
+        data.lastStudyDate + 'T23:59:59'
+      ).toISOString();
   }
 
   return {
     mastery,
     attempt_count: attemptCount,
-    total_time_seconds: totalTime,
-
-    last_study_at:
-      snapshot?.last_study_at ||
-      (
-        data.lastStudyDate
-          ? new Date(
-              data.lastStudyDate +
-              'T23:59:59'
-            ).toISOString()
-          : null
-      ),
-
+    total_time_seconds: totalTimeSeconds,
+    last_study_at: lastStudyAt,
     unit_mastery: unitMastery,
-
     data,
     attempts
   };
 }
-
 /* =========================
    ダッシュボード
 ========================= */
@@ -953,10 +1047,8 @@ function showStudent(userId){
       x=>x.id===userId
     );
 
-  const raw=
-    latestByUser().get(
-      userId
-    );
+ const snapshotMap = latestByUser();
+const raw = snapshotMap.get(userId);
 
   if(!u)return;
 
