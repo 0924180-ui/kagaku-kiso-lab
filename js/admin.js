@@ -107,12 +107,24 @@ async function loadData(){
 function latestByUser(){
   const map = new Map();
 
+  function parseData(snapshot){
+    let data = snapshot?.data;
+
+    if(typeof data === 'string'){
+      try{
+        data = JSON.parse(data);
+      }catch(e){
+        data = {};
+      }
+    }
+
+    return data && typeof data === 'object'
+      ? data
+      : {};
+  }
+
   function getAttemptCount(snapshot){
-    const data =
-      snapshot?.data &&
-      typeof snapshot.data === 'object'
-        ? snapshot.data
-        : {};
+    const data = parseData(snapshot);
 
     const attempts =
       data.attempts &&
@@ -121,65 +133,83 @@ function latestByUser(){
         : {};
 
     const fromAttempts = Object.values(attempts).reduce(
-      (sum, att) => sum + (Number(att?.count) || 0),
+      (sum, att) =>
+        sum + (Number(att?.count) || 0),
       0
     );
 
-    const stored = Number(snapshot?.attempt_count);
+    const stored =
+      Number(snapshot?.attempt_count);
 
     return Math.max(
       fromAttempts,
-      Number.isFinite(stored) ? stored : 0
+      Number.isFinite(stored)
+        ? stored
+        : 0
     );
   }
 
   function getTotalTime(snapshot){
-    const data =
-      snapshot?.data &&
-      typeof snapshot.data === 'object'
-        ? snapshot.data
-        : {};
+    const data = parseData(snapshot);
 
-    const stored = Number(snapshot?.total_time_seconds);
-    const fromData = Number(data?.totalTimeSeconds);
+    const snapshotTime =
+      Number(snapshot?.total_time_seconds);
+
+    const dataTime =
+      Number(data?.totalTimeSeconds);
 
     return Math.max(
-      Number.isFinite(stored) ? stored : 0,
-      Number.isFinite(fromData) ? fromData : 0
+      Number.isFinite(snapshotTime)
+        ? snapshotTime
+        : 0,
+      Number.isFinite(dataTime)
+        ? dataTime
+        : 0
     );
   }
 
   for(const snapshot of allSnapshots){
-    const userId = String(snapshot?.user_id || '');
+
+    const userId =
+      String(snapshot?.user_id || '');
+
     if(!userId) continue;
 
-    const current = map.get(userId);
+    const current =
+      map.get(userId);
 
     if(!current){
       map.set(userId, snapshot);
       continue;
     }
 
-    const currentAttempts = getAttemptCount(current);
-    const newAttempts = getAttemptCount(snapshot);
+    const currentAttempts =
+      getAttemptCount(current);
 
-    const currentTime = getTotalTime(current);
-    const newTime = getTotalTime(snapshot);
+    const newAttempts =
+      getAttemptCount(snapshot);
+
+    const currentTime =
+      getTotalTime(current);
+
+    const newTime =
+      getTotalTime(snapshot);
 
     const currentUpdated =
-      new Date(current?.updated_at || 0).getTime() || 0;
+      new Date(
+        current?.updated_at || 0
+      ).getTime() || 0;
 
     const newUpdated =
-      new Date(snapshot?.updated_at || 0).getTime() || 0;
+      new Date(
+        snapshot?.updated_at || 0
+      ).getTime() || 0;
 
     /*
-      同じユーザーに複数のsnapshotがある場合、
-      実際の学習データが一番多いものを採用する。
+      progress_snapshots は累積データなので、
+      同じユーザーの行を足し算しない。
 
-      優先順位:
-      1. 解答回数
-      2. 総学習時間
-      3. 更新日時
+      一番大きい累積値を持つ行を採用する。
     */
     if(
       newAttempts > currentAttempts ||
@@ -216,11 +246,19 @@ function snapshotData(snapshot){
     };
   }
 
-  const data =
-    snapshot.data &&
-    typeof snapshot.data === 'object'
-      ? snapshot.data
-      : {};
+  let data = snapshot.data;
+
+if(typeof data === 'string'){
+  try{
+    data = JSON.parse(data);
+  }catch(e){
+    data = {};
+  }
+}
+
+if(!data || typeof data !== 'object'){
+  data = {};
+}
 
   const attempts =
     data.attempts &&
