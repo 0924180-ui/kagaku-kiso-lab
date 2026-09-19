@@ -118,9 +118,11 @@ function latestByUser(){
       }
     }
 
-    return data && typeof data === 'object'
-      ? data
-      : {};
+    if(!data || typeof data !== 'object'){
+      data = {};
+    }
+
+    return data;
   }
 
   function getAttemptCount(snapshot){
@@ -132,17 +134,18 @@ function latestByUser(){
         ? data.attempts
         : {};
 
-    const fromAttempts = Object.values(attempts).reduce(
-      (sum, att) =>
-        sum + (Number(att?.count) || 0),
-      0
-    );
+    const calculated =
+      Object.values(attempts).reduce(
+        (sum, att) =>
+          sum + (Number(att?.count) || 0),
+        0
+      );
 
     const stored =
       Number(snapshot?.attempt_count);
 
     return Math.max(
-      fromAttempts,
+      calculated,
       Number.isFinite(stored)
         ? stored
         : 0
@@ -169,7 +172,6 @@ function latestByUser(){
   }
 
   for(const snapshot of allSnapshots){
-
     const userId =
       String(snapshot?.user_id || '');
 
@@ -205,12 +207,6 @@ function latestByUser(){
         snapshot?.updated_at || 0
       ).getTime() || 0;
 
-    /*
-      progress_snapshots は累積データなので、
-      同じユーザーの行を足し算しない。
-
-      一番大きい累積値を持つ行を採用する。
-    */
     if(
       newAttempts > currentAttempts ||
       (
@@ -229,6 +225,157 @@ function latestByUser(){
 
   return map;
 }
+
+/* =========================
+   学習データ
+========================= */
+function snapshotData(snapshot){
+  if(!snapshot){
+    return {
+      mastery: 0,
+      attempt_count: 0,
+      total_time_seconds: 0,
+      last_study_at: null,
+      unit_mastery: {},
+      data: {},
+      attempts: {}
+    };
+  }
+
+  let data = snapshot.data;
+
+  if(typeof data === 'string'){
+    try{
+      data = JSON.parse(data);
+    }catch(e){
+      data = {};
+    }
+  }
+
+  if(!data || typeof data !== 'object'){
+    data = {};
+  }
+
+  const attempts =
+    data.attempts &&
+    typeof data.attempts === 'object'
+      ? data.attempts
+      : {};
+
+  /*
+    解いた問題数は、
+    ユニーク問題数ではなく全回答回数の合計。
+  */
+  const calculatedAttempts =
+    Object.values(attempts).reduce(
+      (sum, att) =>
+        sum + (Number(att?.count) || 0),
+      0
+    );
+
+  const savedAttempts =
+    Number(snapshot.attempt_count);
+
+  const attemptCount = Math.max(
+    calculatedAttempts,
+    Number.isFinite(savedAttempts)
+      ? savedAttempts
+      : 0
+  );
+
+  /*
+    総学習時間
+  */
+  const snapshotTime =
+    Number(snapshot.total_time_seconds);
+
+  const dataTime =
+    Number(data.totalTimeSeconds);
+
+  const totalTimeSeconds = Math.max(
+    Number.isFinite(snapshotTime)
+      ? snapshotTime
+      : 0,
+    Number.isFinite(dataTime)
+      ? dataTime
+      : 0
+  );
+
+  /*
+    定着度
+  */
+  const savedMastery =
+    Number(snapshot.mastery);
+
+  let mastery;
+
+  if(Number.isFinite(savedMastery)){
+    mastery = savedMastery;
+  }else{
+    const values =
+      Object.values(attempts);
+
+    mastery = values.length
+      ? Math.round(
+          values.reduce(
+            (sum, att) =>
+              sum +
+              Mastery.questionScore(att),
+            0
+          ) / values.length
+        )
+      : 0;
+  }
+
+  /*
+    単元別定着度
+  */
+  const savedUnits =
+    snapshot.unit_mastery &&
+    typeof snapshot.unit_mastery === 'object'
+      ? snapshot.unit_mastery
+      : {};
+
+  const unitMastery = {
+    ...savedUnits
+  };
+
+  if(!Object.keys(unitMastery).length){
+    (KagakuData.units || []).forEach(unit => {
+      unitMastery[unit.id] =
+        Mastery.unitScore(
+          unit.id,
+          KagakuData.questions,
+          attempts
+        );
+    });
+  }
+
+  /*
+    最終学習日時
+  */
+  let lastStudyAt =
+    snapshot.last_study_at || null;
+
+  if(!lastStudyAt && data.lastStudyDate){
+    lastStudyAt =
+      new Date(
+        data.lastStudyDate +
+        'T23:59:59'
+      ).toISOString();
+  }
+
+  return {
+    mastery,
+    attempt_count: attemptCount,
+    total_time_seconds: totalTimeSeconds,
+    last_study_at: lastStudyAt,
+    unit_mastery: unitMastery,
+    data,
+    attempts
+  };
+}
+
 
 /* =========================
    学習データ
