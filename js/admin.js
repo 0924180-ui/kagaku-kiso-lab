@@ -202,36 +202,53 @@ async function saveTest(e){
 
   const id=$('test-id').value;
   const ids=[...document.querySelectorAll('.test-q-check:checked')].map(x=>x.value);
-  if(!ids.length){alert('少なくとも1問選択してください。');return}
+
+  if(!ids.length){
+    alert('少なくとも1問選択してください。');
+    return;
+  }
 
   const user=(await supabaseClient.auth.getUser()).data.user;
   const now=new Date().toISOString();
+
+  // 内蔵問題もテストに使えるよう、Supabaseに存在しない問題を
+  // 保存時に自動でquestionsへ同期する。
+  // これにより「tests.question_idsにはq1があるが、
+  // questionsテーブルにはq1がない」という状態を防ぐ。
   const localMap=new Map((KagakuData.questions||[]).map(q=>[String(q.id),q]));
 
-  // 選択された内蔵問題を必ずquestionsへ同期する。
-  // 既存行もupsertすることで、非公開・削除状態の問題もテスト用に復旧できる。
   for(const questionId of ids){
     const localQ=localMap.get(String(questionId));
     if(!localQ) continue;
 
-    const existing=cloudQuestionRows.find(r=>String(r.id)===String(questionId));
-    const questionPayload={
-      id:localQ.id,
-      unit_id:localQ.unitId,
-      difficulty:localQ.difficulty||'basic',
-      question:localQ.question||'',
-      options:Array.isArray(localQ.options)?localQ.options:[],
-      answer_index:Number(localQ.answerIndex)||0,
-      explanation:localQ.explanation||'',
-      tags:Array.isArray(localQ.tags)?localQ.tags:[],
-      is_published:true,
-      is_deleted:false,
-      created_by:existing?.created_by||user?.id||null,
-      updated_at:now
-    };
+    const cloudQ=cloudQuestionRows.find(r=>String(r.id)===String(questionId));
 
-    const {error:questionError}=await supabaseClient.from('questions').upsert(questionPayload,{onConflict:'id'});
-    if(questionError){alert('テスト用の問題を保存できませんでした: '+questionError.message);return}
+    if(!cloudQ){
+      const questionPayload={
+        id:localQ.id,
+        unit_id:localQ.unitId,
+        difficulty:localQ.difficulty||'basic',
+        question:localQ.question||'',
+        options:Array.isArray(localQ.options)?localQ.options:[],
+        answer_index:Number(localQ.answerIndex)||0,
+        explanation:localQ.explanation||'',
+        tags:Array.isArray(localQ.tags)?localQ.tags:[],
+        is_published:true,
+        is_deleted:false,
+        is_test_only:false,
+        created_by:user?.id||null,
+        updated_at:now
+      };
+
+      const {error:questionError}=await supabaseClient
+        .from('questions')
+        .upsert(questionPayload,{onConflict:'id'});
+
+      if(questionError){
+        alert('テスト用の問題を保存できませんでした: '+questionError.message);
+        return;
+      }
+    }
   }
 
   const payload={
@@ -248,7 +265,10 @@ async function saveTest(e){
     ? await supabaseClient.from('tests').update(payload).eq('id',id)
     : await supabaseClient.from('tests').insert(payload);
 
-  if(result.error){alert('テストを保存できませんでした: '+result.error.message);return}
+  if(result.error){
+    alert('テストを保存できませんでした: '+result.error.message);
+    return;
+  }
 
   $('test-editor').hidden=true;
   await loadQuestionAdminData();
