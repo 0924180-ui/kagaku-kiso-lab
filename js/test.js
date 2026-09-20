@@ -75,7 +75,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   // 公開テスト取得
   // ------------------------------------------------------------
 
-  const { data: tests, error } = await c.rpc("get_published_tests");
+  const { data: tests, error } =
+    await c.rpc("get_published_tests");
 
   if (error) {
     console.error("公開テスト取得エラー:", error);
@@ -83,6 +84,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     list.innerHTML = `
       <div class="test-card">
         <p>テスト機能の設定がまだ完了していません。</p>
+
         <p style="font-size:0.9em;opacity:0.8;">
           管理者に設定を確認してもらってください。
         </p>
@@ -109,20 +111,24 @@ document.addEventListener("DOMContentLoaded", async () => {
   list.innerHTML = tests
     .map(test => {
       const ids = toIds(test.question_ids);
-      const limit = Number(test.time_limit_seconds) || 0;
+      const limit =
+        Number(test.time_limit_seconds) || 0;
 
       return `
         <article class="test-item">
+
           <div>
             <h2>${esc(test.title)}</h2>
 
-            <p>${esc(test.description || "")}</p>
+            <p>
+              ${esc(test.description || "")}
+            </p>
 
             <div class="test-meta">
               ${ids.length}問 ・
               ${
                 limit
-                  ? `${Math.ceil(limit / 60)}分制限`
+                  ? `${formatTimeLimit(limit)}制限`
                   : "時間制限なし"
               }
             </div>
@@ -134,22 +140,52 @@ document.addEventListener("DOMContentLoaded", async () => {
           >
             挑戦する
           </button>
+
         </article>
       `;
     })
     .join("");
 
-  document.querySelectorAll("[data-test]").forEach(button => {
-    button.addEventListener("click", () => {
-      const test = tests.find(
-        item => String(item.id) === String(button.dataset.test)
-      );
+  document
+    .querySelectorAll("[data-test]")
+    .forEach(button => {
+      button.addEventListener("click", () => {
+        const test = tests.find(
+          item =>
+            String(item.id) ===
+            String(button.dataset.test)
+        );
 
-      if (test) {
-        startTest(test);
-      }
+        if (test) {
+          startTest(test);
+        }
+      });
     });
-  });
+
+  // ------------------------------------------------------------
+  // 時間表示用関数
+  // ------------------------------------------------------------
+
+  function formatTimeLimit(seconds) {
+    const total =
+      Math.max(0, Number(seconds) || 0);
+
+    if (total < 60) {
+      return `${total}秒`;
+    }
+
+    const minutes =
+      Math.floor(total / 60);
+
+    const secs =
+      total % 60;
+
+    if (secs === 0) {
+      return `${minutes}分`;
+    }
+
+    return `${minutes}分${secs}秒`;
+  }
 
   // ------------------------------------------------------------
   // テスト開始
@@ -163,9 +199,6 @@ document.addEventListener("DOMContentLoaded", async () => {
      *
      * 通常問題でもテスト専用問題でも、
      * KagakuData.questions に存在していれば出題できます。
-     *
-     * 将来的に管理画面で「テスト専用問題」を追加した場合も、
-     * question_ids に登録されていれば同じ仕組みで扱えます。
      */
     let questions = ids
       .map(id =>
@@ -197,7 +230,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const startedAt = Date.now();
 
-    const timeLimit = Number(test.time_limit_seconds) || 0;
+    const timeLimit =
+      Number(test.time_limit_seconds) || 0;
 
     let timer = null;
     let finished = false;
@@ -216,14 +250,16 @@ document.addEventListener("DOMContentLoaded", async () => {
       timer = setInterval(() => {
         if (finished) return;
 
-        const elapsed = Math.floor(
-          (Date.now() - startedAt) / 1000
-        );
+        const elapsed =
+          Math.floor(
+            (Date.now() - startedAt) / 1000
+          );
 
-        const remaining = Math.max(
-          0,
-          timeLimit - elapsed
-        );
+        const remaining =
+          Math.max(
+            0,
+            timeLimit - elapsed
+          );
 
         updateTimer(remaining);
 
@@ -240,25 +276,33 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     function updateTimer(remaining) {
       const timerElement =
-        document.getElementById("test-timer");
+        document.getElementById(
+          "test-timer"
+        );
 
       if (!timerElement) return;
 
       if (!timeLimit) {
-        timerElement.textContent = "時間制限なし";
+        timerElement.textContent =
+          "制限時間：なし";
+
         return;
       }
 
-      const minutes = Math.floor(remaining / 60);
-      const seconds = remaining % 60;
-
+      /*
+       * 右上は「制限時間」を固定表示。
+       *
+       * 例：
+       * 制限時間：10分
+       * 制限時間：5分30秒
+       *
+       * カウントダウンでこの表示が
+       * 変な値にならないようにする。
+       */
       timerElement.textContent =
-        `残り ${minutes}:${String(seconds).padStart(2, "0")}`;
+        `制限時間：${formatTimeLimit(timeLimit)}`;
 
-      timerElement.classList.toggle(
-        "warn",
-        remaining <= 30
-      );
+      timerElement.classList.remove("warn");
     }
 
     // ----------------------------------------------------------
@@ -268,14 +312,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     function renderQuestion() {
       if (finished) return;
 
-      const q = questions[currentIndex];
+      const q =
+        questions[currentIndex];
 
       if (!q) {
         finishTest(false);
         return;
       }
 
-      const selected = answers[q.id];
+      const selected =
+        answers[q.id];
 
       area.innerHTML = `
         <div class="test-card">
@@ -288,8 +334,10 @@ document.addEventListener("DOMContentLoaded", async () => {
               gap:12px;
             "
           >
+
             <span class="eyebrow">
-              第${currentIndex + 1}問 / ${questions.length}
+              第${currentIndex + 1}問 /
+              ${questions.length}
             </span>
 
             <span
@@ -297,11 +345,12 @@ document.addEventListener("DOMContentLoaded", async () => {
               class="timer"
             >
               ${
-                timeLimit
-                  ? "計測中"
-                  : "時間制限なし"
+                timeLimit > 0
+                  ? `制限時間：${formatTimeLimit(timeLimit)}`
+                  : "制限時間：なし"
               }
             </span>
+
           </div>
 
           <div
@@ -312,33 +361,42 @@ document.addEventListener("DOMContentLoaded", async () => {
           </div>
 
           <div class="options-grid">
+
             ${
               (q.options || [])
-                .map((option, index) => `
-                  <button
-                    type="button"
-                    class="option-btn ${
-                      selected === index
-                        ? "selected"
-                        : ""
-                    }"
-                    data-opt="${index}"
-                    ${
-                      selected !== undefined
-                        ? "disabled"
-                        : ""
-                    }
-                  >
-                    <strong
-                      style="margin-right:8px;"
+                .map(
+                  (option, index) => `
+                    <button
+                      type="button"
+                      class="option-btn ${
+                        selected === index
+                          ? "selected"
+                          : ""
+                      }"
+                      data-opt="${index}"
+                      ${
+                        selected !== undefined
+                          ? "disabled"
+                          : ""
+                      }
                     >
-                      ${index + 1}.
-                    </strong>
-                    ${esc(option)}
-                  </button>
-                `)
+
+                      <strong
+                        style="
+                          margin-right:8px;
+                        "
+                      >
+                        ${index + 1}.
+                      </strong>
+
+                      ${esc(option)}
+
+                    </button>
+                  `
+                )
                 .join("")
             }
+
           </div>
 
           <div
@@ -366,7 +424,8 @@ document.addEventListener("DOMContentLoaded", async () => {
               class="btn btn-primary"
             >
               ${
-                currentIndex === questions.length - 1
+                currentIndex ===
+                questions.length - 1
                   ? "採点する"
                   : "次の問題"
               }
@@ -382,15 +441,21 @@ document.addEventListener("DOMContentLoaded", async () => {
       // --------------------------------------------------------
 
       document
-        .querySelectorAll("#test-area [data-opt]")
+        .querySelectorAll(
+          "#test-area [data-opt]"
+        )
         .forEach(button => {
-          button.addEventListener("click", () => {
-            const index = Number(
-              button.dataset.opt
-            );
+          button.addEventListener(
+            "click",
+            () => {
+              const index =
+                Number(
+                  button.dataset.opt
+                );
 
-            selectAnswer(index);
-          });
+              selectAnswer(index);
+            }
+          );
         });
 
       // --------------------------------------------------------
@@ -398,7 +463,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       // --------------------------------------------------------
 
       const nextButton =
-        document.getElementById("test-next");
+        document.getElementById(
+          "test-next"
+        );
 
       if (nextButton) {
         nextButton.addEventListener(
@@ -407,14 +474,18 @@ document.addEventListener("DOMContentLoaded", async () => {
         );
       }
 
-      // タイマー表示を現在値に更新
+      // 現在の制限時間を表示
       if (timeLimit) {
-        const elapsed = Math.floor(
-          (Date.now() - startedAt) / 1000
-        );
+        const elapsed =
+          Math.floor(
+            (Date.now() - startedAt) / 1000
+          );
 
         updateTimer(
-          Math.max(0, timeLimit - elapsed)
+          Math.max(
+            0,
+            timeLimit - elapsed
+          )
         );
       }
     }
@@ -426,7 +497,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     function selectAnswer(index) {
       if (finished) return;
 
-      const q = questions[currentIndex];
+      const q =
+        questions[currentIndex];
 
       if (!q) return;
 
@@ -438,7 +510,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       // 選択肢の範囲チェック
       if (
         index < 0 ||
-        index >= (q.options || []).length
+        index >=
+          (q.options || []).length
       ) {
         return;
       }
@@ -448,17 +521,20 @@ document.addEventListener("DOMContentLoaded", async () => {
       renderQuestion();
 
       /*
-       * 「次へ」ボタンにフォーカス。
+       * 回答後は次へボタンにフォーカス。
        *
        * これにより、
-       * 数字キーで回答
+       *
+       * 数字キー
        * ↓
        * Enter
        *
-       * という流れが自然に使えます。
+       * という流れで操作できます。
        */
       const nextButton =
-        document.getElementById("test-next");
+        document.getElementById(
+          "test-next"
+        );
 
       if (nextButton) {
         nextButton.focus();
@@ -472,13 +548,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     function goToNextQuestion() {
       if (finished) return;
 
-      const q = questions[currentIndex];
+      const q =
+        questions[currentIndex];
 
       if (!q) return;
 
       // 未回答なら進ませない
       if (answers[q.id] === undefined) {
-        alert("選択肢を1つ選んでください。");
+        alert(
+          "選択肢を1つ選んでください。"
+        );
+
         return;
       }
 
@@ -504,9 +584,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (finished) return;
 
       /*
-       * テキスト入力中などはショートカットを発動させない。
+       * 入力欄ではショートカットを発動させない。
        */
-      const target = event.target;
+      const target =
+        event.target;
 
       if (
         target &&
@@ -519,22 +600,50 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
+      const q =
+        questions[currentIndex];
+
+      if (!q) return;
+
+      /*
+       * Chrome / Chromebook / テンキーなどで
+       * キーの値が違う場合に備える。
+       */
+      const keyMap = {
+        "1": 0,
+        "2": 1,
+        "3": 2,
+        "4": 3,
+
+        "Digit1": 0,
+        "Digit2": 1,
+        "Digit3": 2,
+        "Digit4": 3,
+
+        "Numpad1": 0,
+        "Numpad2": 1,
+        "Numpad3": 2,
+        "Numpad4": 3
+      };
+
+      const answerIndex =
+        keyMap[event.key] ??
+        keyMap[event.code];
+
       // --------------------------------------------------------
       // 1～4 → 選択肢
       // --------------------------------------------------------
 
       if (
-        ["1", "2", "3", "4"].includes(event.key)
+        answerIndex !== undefined
       ) {
-        const index =
-          Number(event.key) - 1;
-
-        const q = questions[currentIndex];
-
-        if (!q) return;
-
-        // 回答済みなら何もしない
-        if (answers[q.id] !== undefined) {
+        /*
+         * すでに回答済みなら
+         * 何もしない。
+         */
+        if (
+          answers[q.id] !== undefined
+        ) {
           return;
         }
 
@@ -543,15 +652,29 @@ document.addEventListener("DOMContentLoaded", async () => {
             "#test-area [data-opt]"
           );
 
-        const button = optionButtons[index];
+        const button =
+          optionButtons[
+            answerIndex
+          ];
 
-        if (!button || button.disabled) {
+        if (
+          !button ||
+          button.disabled
+        ) {
           return;
         }
 
         event.preventDefault();
+        event.stopPropagation();
 
-        selectAnswer(index);
+        /*
+         * 実際のボタンをクリックする。
+         *
+         * そのため、
+         * マウス操作とキーボード操作で
+         * 同じ処理を通る。
+         */
+        button.click();
 
         return;
       }
@@ -560,11 +683,19 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Enter → 次へ
       // --------------------------------------------------------
 
-      if (event.key === "Enter") {
-        const nextButton =
-          document.getElementById("test-next");
-
-        if (!nextButton) return;
+      if (
+        event.key === "Enter" ||
+        event.code === "Enter" ||
+        event.code === "NumpadEnter"
+      ) {
+        /*
+         * 未回答なら進ませない。
+         */
+        if (
+          answers[q.id] === undefined
+        ) {
+          return;
+        }
 
         event.preventDefault();
         event.stopPropagation();
@@ -574,10 +705,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     /*
-     * テスト開始時にキーボードイベントを登録。
-     * capture=true にして、他の処理に奪われにくくする。
+     * window + capture=true
+     *
+     * ページ内の他の処理より先に
+     * キーボード入力を取得する。
      */
-    document.addEventListener(
+    window.addEventListener(
       "keydown",
       handleKeydown,
       true
@@ -597,21 +730,23 @@ document.addEventListener("DOMContentLoaded", async () => {
         timer = null;
       }
 
-      document.removeEventListener(
+      window.removeEventListener(
         "keydown",
         handleKeydown,
         true
       );
 
-      const elapsed = Math.round(
-        (Date.now() - startedAt) / 1000
-      );
+      const elapsed =
+        Math.round(
+          (Date.now() - startedAt) / 1000
+        );
 
       let score = 0;
 
       questions.forEach(q => {
         if (
-          answers[q.id] === q.answerIndex
+          answers[q.id] ===
+          q.answerIndex
         ) {
           score++;
         }
@@ -628,8 +763,13 @@ document.addEventListener("DOMContentLoaded", async () => {
           await c.auth.getSession();
 
         userId =
-          sessionResult?.data?.session?.user?.id ||
+          sessionResult
+            ?.data
+            ?.session
+            ?.user
+            ?.id ||
           null;
+
       } catch (e) {
         console.warn(
           "ログインユーザー取得に失敗:",
@@ -669,7 +809,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       const percentage =
         questions.length > 0
           ? Math.round(
-              (score / questions.length) * 100
+              (score /
+                questions.length) *
+                100
             )
           : 0;
 
@@ -677,84 +819,127 @@ document.addEventListener("DOMContentLoaded", async () => {
         <div class="test-card">
 
           <div class="eyebrow">
-            ${timeout ? "時間終了" : "テスト完了"}
+            ${
+              timeout
+                ? "時間終了"
+                : "テスト完了"
+            }
           </div>
 
-          <h2 style="text-align:center;">
+          <h2
+            style="
+              text-align:center;
+            "
+          >
             ${esc(test.title)}
           </h2>
 
           <div class="result-score">
-            ${score} / ${questions.length} 点
+            ${score} /
+            ${questions.length} 点
           </div>
 
-          <p style="text-align:center;">
+          <p
+            style="
+              text-align:center;
+            "
+          >
             正答率 ${percentage}%
             ・
-            所要 ${Math.floor(elapsed / 60)}分${elapsed % 60}秒
+            所要
+            ${Math.floor(
+              elapsed / 60
+            )}分${elapsed % 60}秒
           </p>
 
           <div class="answer-review">
+
             ${
               questions
-                .map((q, index) => {
-                  const isCorrect =
-                    answers[q.id] ===
-                    q.answerIndex;
+                .map(
+                  (q, index) => {
+                    const isCorrect =
+                      answers[q.id] ===
+                      q.answerIndex;
 
-                  const userAnswer =
-                    answers[q.id];
+                    const userAnswer =
+                      answers[q.id];
 
-                  return `
-                    <div
-                      style="
-                        margin-bottom:16px;
-                        padding:12px;
-                        border-radius:8px;
-                        background:var(--surface-2, rgba(0,0,0,0.03));
-                      "
-                    >
-
-                      <strong>
-                        第${index + 1}問
-                        ${
-                          isCorrect
-                            ? "⭕ 正解"
-                            : "❌ 不正解"
-                        }
-                      </strong>
-
-                      <div style="margin-top:6px;">
-                        ${
-                          userAnswer === undefined
-                            ? "未回答"
-                            : `あなたの回答：
-                               ${userAnswer + 1}番`
-                        }
-                      </div>
-
-                      <div style="margin-top:6px;">
-                        正解：
-                        ${Number(q.answerIndex) + 1}番
-                      </div>
-
+                    return `
                       <div
                         style="
-                          margin-top:8px;
-                          opacity:0.9;
+                          margin-bottom:16px;
+                          padding:12px;
+                          border-radius:8px;
+                          background:
+                            var(
+                              --surface-2,
+                              rgba(
+                                0,
+                                0,
+                                0,
+                                0.03
+                              )
+                            );
                         "
                       >
-                        ${esc(
-                          q.explanation ||
-                          "解説なし"
-                        )}
-                      </div>
 
-                    </div>
-                  `;
-                })
+                        <strong>
+                          第${index + 1}問
+
+                          ${
+                            isCorrect
+                              ? "⭕ 正解"
+                              : "❌ 不正解"
+                          }
+                        </strong>
+
+                        <div
+                          style="
+                            margin-top:6px;
+                          "
+                        >
+                          ${
+                            userAnswer ===
+                            undefined
+                              ? "未回答"
+                              : `あなたの回答：
+                                 ${userAnswer + 1}番`
+                          }
+                        </div>
+
+                        <div
+                          style="
+                            margin-top:6px;
+                          "
+                        >
+                          正解：
+                          ${
+                            Number(
+                              q.answerIndex
+                            ) + 1
+                          }番
+                        </div>
+
+                        <div
+                          style="
+                            margin-top:8px;
+                            opacity:0.9;
+                          "
+                        >
+                          ${esc(
+                            q.explanation ||
+                            "解説なし"
+                          )}
+                        </div>
+
+                      </div>
+                    `;
+                  }
+                )
                 .join("")
             }
+
           </div>
 
           <div
@@ -763,6 +948,7 @@ document.addEventListener("DOMContentLoaded", async () => {
               margin-top:18px;
             "
           >
+
             <button
               type="button"
               class="btn btn-outline"
@@ -770,13 +956,16 @@ document.addEventListener("DOMContentLoaded", async () => {
             >
               テスト一覧へ
             </button>
+
           </div>
 
         </div>
       `;
 
       const backButton =
-        document.getElementById("back-tests");
+        document.getElementById(
+          "back-tests"
+        );
 
       if (backButton) {
         backButton.addEventListener(
