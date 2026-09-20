@@ -2,259 +2,310 @@
 const ADMIN_CONFIG = (() => {
   try {
     const saved = JSON.parse(localStorage.getItem('kagaku_lab_supabase_config') || '{}');
-    return { url: window.SUPABASE_URL || saved.url || '', anonKey: window.SUPABASE_ANON_KEY || saved.anonKey || '' };
-  } catch (e) { return { url: window.SUPABASE_URL || '', anonKey: window.SUPABASE_ANON_KEY || '' }; }
+    return {
+      url: window.SUPABASE_URL || saved.url || '',
+      anonKey: window.SUPABASE_ANON_KEY || saved.anonKey || ''
+    };
+  } catch (e) {
+    return {
+      url: window.SUPABASE_URL || '',
+      anonKey: window.SUPABASE_ANON_KEY || ''
+    };
+  }
 })();
-let supabaseClient=null, allStudents=[], allSnapshots=[], allHistory=[], cloudQuestionRows=[];
-const $=id=>document.getElementById(id);
-const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
-function grade(v){return Mastery.grade(Number(v)||0)}
-function fmtTime(sec){sec=Number(sec)||0;const h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60);return h?`${h}時間${m}分`:`${m}分`}
-function isToday(date){if(!date)return false;const d=new Date(date),n=new Date();return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate()}
-function fmtDate(date){if(!date)return '—';return new Date(date).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}
-function fmtDay(date){if(!date)return '—';const d=new Date(date+'T00:00:00');return `${d.getMonth()+1}/${d.getDate()}`}
 
-async function setup(){
-  if(!ADMIN_CONFIG.url||!ADMIN_CONFIG.anonKey){
-    $('login-status').textContent='Supabaseの接続設定がありません。';
-    $('login-status').className='status danger-status';
-    $('login-form').style.display='none';
-    return
-  }
-  supabaseClient=window.supabase.createClient(ADMIN_CONFIG.url,ADMIN_CONFIG.anonKey);
-  supabaseClient.auth.onAuthStateChange((_event,session)=>{if(session) enter(session)});
-  const {data}=await supabaseClient.auth.getSession();
-  if(data.session) await enter(data.session);
+let supabaseClient = null;
+let allStudents = [];
+let allSnapshots = [];
+let allHistory = [];
+let cloudQuestionRows = [];
+
+const $ = id => document.getElementById(id);
+
+const esc = s =>
+  String(s ?? '').replace(
+    /[&<>'"]/g,
+    c => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      "'": '&#39;',
+      '"': '&quot;'
+    }[c])
+  );
+
+function grade(v) {
+  return Mastery.grade(Number(v) || 0);
 }
 
-async function login(e){
-  e.preventDefault();
-  if(!supabaseClient)return;
-  $('login-status').textContent='ログインしています…';
-  const {error}=await supabaseClient.auth.signInWithPassword({
-    email:$('login-email').value.trim(),
-    password:$('login-password').value
+function fmtTime(sec) {
+  sec = Number(sec) || 0;
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return h ? `${h}時間${m}分` : `${m}分`;
+}
+
+function isToday(date) {
+  if (!date) return false;
+
+  const d = new Date(date);
+  const n = new Date();
+
+  return (
+    d.getFullYear() === n.getFullYear() &&
+    d.getMonth() === n.getMonth() &&
+    d.getDate() === n.getDate()
+  );
+}
+
+function fmtDate(date) {
+  if (!date) return '—';
+
+  return new Date(date).toLocaleString('ja-JP', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
   });
-  if(error){
-    $('login-status').textContent='ログインできませんでした。';
-    $('login-status').className='status danger-status'
+}
+
+function fmtDay(date) {
+  if (!date) return '—';
+
+  const d = new Date(date + 'T00:00:00');
+
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+
+/* =========================================================
+   管理者ログイン
+========================================================= */
+
+async function setup() {
+  if (!ADMIN_CONFIG.url || !ADMIN_CONFIG.anonKey) {
+    $('login-status').textContent =
+      'Supabaseの接続設定がありません。';
+
+    $('login-status').className =
+      'status danger-status';
+
+    $('login-form').style.display = 'none';
+
+    return;
+  }
+
+  supabaseClient = window.supabase.createClient(
+    ADMIN_CONFIG.url,
+    ADMIN_CONFIG.anonKey
+  );
+
+  supabaseClient.auth.onAuthStateChange(
+    (_event, session) => {
+      if (session) enter(session);
+    }
+  );
+
+  const { data } =
+    await supabaseClient.auth.getSession();
+
+  if (data.session) {
+    await enter(data.session);
   }
 }
 
-async function enter(session){
-  const {data:profile,error}=await supabaseClient
+async function login(e) {
+  e.preventDefault();
+
+  if (!supabaseClient) return;
+
+  $('login-status').textContent =
+    'ログインしています…';
+
+  const { error } =
+    await supabaseClient.auth.signInWithPassword({
+      email: $('login-email').value.trim(),
+      password: $('login-password').value
+    });
+
+  if (error) {
+    $('login-status').textContent =
+      'ログインできませんでした。';
+
+    $('login-status').className =
+      'status danger-status';
+  }
+}
+
+async function enter(session) {
+  const {
+    data: profile,
+    error
+  } = await supabaseClient
     .from('profiles')
     .select('display_name,role')
-    .eq('id',session.user.id)
+    .eq('id', session.user.id)
     .maybeSingle();
 
-  if(error||!profile||profile.role!=='admin'){
+  if (
+    error ||
+    !profile ||
+    profile.role !== 'admin'
+  ) {
     await supabaseClient.auth.signOut();
-    $('login-status').textContent='このアカウントには管理者権限がありません。';
-    $('login-status').className='status danger-status';
-    return
+
+    $('login-status').textContent =
+      'このアカウントには管理者権限がありません。';
+
+    $('login-status').className =
+      'status danger-status';
+
+    return;
   }
 
-  $('login-view').hidden=true;
-  $('admin-view').hidden=false;
-  $('admin-subtitle').textContent=`ログイン中: ${profile.display_name||session.user.email||'管理者'}`;
+  $('login-view').hidden = true;
+  $('admin-view').hidden = false;
 
-  if(window.KagakuCloud?.questionsReady) await window.KagakuCloud.questionsReady;
+  $('admin-subtitle').textContent =
+    `ログイン中: ${
+      profile.display_name ||
+      session.user.email ||
+      '管理者'
+    }`;
+
+  if (window.KagakuCloud?.questionsReady) {
+    await window.KagakuCloud.questionsReady;
+  }
 
   await loadData();
   await loadQuestionAdminData();
 }
 
-async function loadData(){
-  $('admin-status').textContent='データを読み込んでいます…';
 
-  const [profiles,snaps,history]=await Promise.all([
+/* =========================================================
+   学習データ
+========================================================= */
+
+async function loadData() {
+  $('admin-status').textContent =
+    'データを読み込んでいます…';
+
+  const [
+    profiles,
+    snaps,
+    history
+  ] = await Promise.all([
     supabaseClient
       .from('profiles')
-      .select('id,display_name,email,role,created_at')
-      .eq('role','student')
-      .order('created_at',{ascending:false}),
+      .select(
+        'id,display_name,email,role,created_at'
+      )
+      .eq('role', 'student')
+      .order('created_at', {
+        ascending: false
+      }),
 
     supabaseClient
       .from('progress_snapshots')
-      .select('user_id,mastery,attempt_count,total_time_seconds,last_study_at,unit_mastery,data,updated_at')
-      .order('updated_at',{ascending:false}),
+      .select(
+        'user_id,mastery,attempt_count,total_time_seconds,last_study_at,unit_mastery,data,updated_at'
+      )
+      .order('updated_at', {
+        ascending: false
+      }),
 
     supabaseClient
       .from('progress_history')
-      .select('user_id,recorded_date,mastery,attempt_count,total_time_seconds,unit_mastery,updated_at')
-      .order('recorded_date',{ascending:true})
+      .select(
+        'user_id,recorded_date,mastery,attempt_count,total_time_seconds,unit_mastery,updated_at'
+      )
+      .order('recorded_date', {
+        ascending: true
+      })
   ]);
 
-  if(profiles.error||snaps.error){
-    $('admin-status').textContent='データを取得できませんでした。RLS設定とテーブル設定を確認してください。';
-    $('admin-status').className='status danger-status';
-    return
+  if (profiles.error || snaps.error) {
+    $('admin-status').textContent =
+      'データを取得できませんでした。RLS設定とテーブル設定を確認してください。';
+
+    $('admin-status').className =
+      'status danger-status';
+
+    return;
   }
 
-  allStudents=profiles.data||[];
-  allSnapshots=snaps.data||[];
-  allHistory=history.error?[]:(history.data||[]);
+  allStudents = profiles.data || [];
+  allSnapshots = snaps.data || [];
+  allHistory = history.error
+    ? []
+    : history.data || [];
 
   render();
 
-  $('admin-status').textContent=
+  $('admin-status').textContent =
     history.error
       ? `${allStudents.length}人分のデータを表示中（学習履歴テーブル未設定）`
       : `${allStudents.length}人分のデータを表示中`;
 }
 
-function latestByUser(){
+function latestByUser() {
   const map = new Map();
 
-  function parseData(snapshot){
-    let data = snapshot?.data;
+  for (const s of allSnapshots) {
+    const id = String(s?.user_id || '');
 
-    if(typeof data === 'string'){
-      try{
-        data = JSON.parse(data);
-      }catch(e){
-        data = {};
-      }
-    }
+    if (!id) continue;
 
-    if(!data || typeof data !== 'object'){
-      data = {};
-    }
+    const prev = map.get(id);
 
-    return data;
-  }
-
-  function getAttemptCount(snapshot){
-    const data = parseData(snapshot);
-
-    const attempts =
-      data.attempts &&
-      typeof data.attempts === 'object'
-        ? data.attempts
-        : {};
-
-    const calculated =
-      Object.values(attempts).reduce(
-        (sum, att) =>
-          sum + (Number(att?.count) || 0),
-        0
-      );
-
-    const stored =
-      Number(snapshot?.attempt_count);
-
-    return Math.max(
-      calculated,
-      Number.isFinite(stored)
-        ? stored
-        : 0
-    );
-  }
-
-  function getTotalTime(snapshot){
-    const data = parseData(snapshot);
-
-    const snapshotTime =
-      Number(snapshot?.total_time_seconds);
-
-    const dataTime =
-      Number(data?.totalTimeSeconds);
-
-    return Math.max(
-      Number.isFinite(snapshotTime)
-        ? snapshotTime
-        : 0,
-      Number.isFinite(dataTime)
-        ? dataTime
-        : 0
-    );
-  }
-
-  for(const snapshot of allSnapshots){
-    const userId =
-      String(snapshot?.user_id || '');
-
-    if(!userId) continue;
-
-    const current =
-      map.get(userId);
-
-    if(!current){
-      map.set(userId, snapshot);
+    if (!prev) {
+      map.set(id, s);
       continue;
     }
 
-    const currentAttempts =
-      getAttemptCount(current);
+    const sAttempts =
+      Number(s.attempt_count) || 0;
 
-    const newAttempts =
-      getAttemptCount(snapshot);
+    const pAttempts =
+      Number(prev.attempt_count) || 0;
 
-    const currentTime =
-      getTotalTime(current);
+    const sTime =
+      Number(s.total_time_seconds) || 0;
 
-    const newTime =
-      getTotalTime(snapshot);
+    const pTime =
+      Number(prev.total_time_seconds) || 0;
 
-    const currentUpdated =
-      new Date(
-        current?.updated_at || 0
-      ).getTime() || 0;
+    const sUpdated =
+      new Date(s.updated_at || 0).getTime() || 0;
 
-    const newUpdated =
-      new Date(
-        snapshot?.updated_at || 0
-      ).getTime() || 0;
+    const pUpdated =
+      new Date(prev.updated_at || 0).getTime() || 0;
 
-    if(
-      newAttempts > currentAttempts ||
+    if (
+      sAttempts > pAttempts ||
       (
-        newAttempts === currentAttempts &&
-        newTime > currentTime
+        sAttempts === pAttempts &&
+        sTime > pTime
       ) ||
       (
-        newAttempts === currentAttempts &&
-        newTime === currentTime &&
-        newUpdated > currentUpdated
+        sAttempts === pAttempts &&
+        sTime === pTime &&
+        sUpdated > pUpdated
       )
-    ){
-      map.set(userId, snapshot);
+    ) {
+      map.set(id, s);
     }
   }
 
   return map;
 }
 
-/* =========================
-   学習データ
-========================= */
-function snapshotData(snapshot){
-  if(!snapshot){
-    return {
-      mastery: 0,
-      attempt_count: 0,
-      total_time_seconds: 0,
-      last_study_at: null,
-      unit_mastery: {},
-      data: {},
-      attempts: {}
-    };
-  }
-
-  let data = snapshot.data;
-
-if(typeof data === 'string'){
-  try{
-    data = JSON.parse(data);
-  }catch(e){
-    data = {};
-  }
-}
-
-if(!data || typeof data !== 'object'){
-  data = {};
-}
+function snapshotData(snapshot) {
+  const data =
+    snapshot?.data &&
+    typeof snapshot.data === 'object'
+      ? snapshot.data
+      : {};
 
   const attempts =
     data.attempts &&
@@ -262,90 +313,60 @@ if(!data || typeof data !== 'object'){
       ? data.attempts
       : {};
 
-  /*
-    解答回数
+  const calculatedAttemptCount =
+    Object.values(attempts).reduce(
+      (total, att) =>
+        total +
+        (Number(att?.count) || 0),
+      0
+    );
 
-    例:
-    Aを1回
-    Bを3回
-    Cを2回
+  const storedMastery =
+    Number(snapshot?.mastery);
 
-    → 6問
-  */
-  const attemptsCount = Object.values(attempts).reduce(
-    (sum, att) => {
-      return sum + (Number(att?.count) || 0);
-    },
-    0
-  );
+  const mastery =
+    Number.isFinite(storedMastery)
+      ? storedMastery
+      : Mastery.overallScore(
+          KagakuData.questions,
+          attempts
+        );
 
-  const savedAttemptCount =
-    Number(snapshot.attempt_count);
+  const storedAttemptCount =
+    Number(snapshot?.attempt_count);
 
-  const attemptCount = Math.max(
-    attemptsCount,
-    Number.isFinite(savedAttemptCount)
-      ? savedAttemptCount
-      : 0
-  );
+  const attemptCount =
+    Number.isFinite(storedAttemptCount) &&
+    storedAttemptCount >= 0
+      ? storedAttemptCount
+      : calculatedAttemptCount;
 
-  /*
-    総学習時間
-  */
-  const snapshotTime =
-    Number(snapshot.total_time_seconds);
+  const storedTime =
+    Number(snapshot?.total_time_seconds);
 
-  const dataTime =
-    Number(data.totalTimeSeconds);
+  const embeddedTime =
+    Number(data.totalTimeSeconds) || 0;
 
-  const totalTimeSeconds = Math.max(
-    Number.isFinite(snapshotTime)
-      ? snapshotTime
-      : 0,
+  const totalTime =
+    Math.max(
+      Number.isFinite(storedTime)
+        ? storedTime
+        : 0,
+      embeddedTime
+    );
 
-    Number.isFinite(dataTime)
-      ? dataTime
-      : 0
-  );
-
-  /*
-    定着度
-  */
-  const savedMastery =
-    Number(snapshot.mastery);
-
-  let mastery;
-
-  if(Number.isFinite(savedMastery)){
-    mastery = savedMastery;
-  }else{
-    const values = Object.values(attempts);
-
-    mastery = values.length
-      ? Math.round(
-          values.reduce(
-            (sum, att) =>
-              sum + Mastery.questionScore(att),
-            0
-          ) / values.length
-        )
-      : 0;
-  }
-
-  /*
-    単元別定着度
-  */
-  const savedUnits =
-    snapshot.unit_mastery &&
+  const storedUnits =
+    snapshot?.unit_mastery &&
     typeof snapshot.unit_mastery === 'object'
       ? snapshot.unit_mastery
       : {};
 
-  const unitMastery = {
-    ...savedUnits
-  };
+  const unitMastery =
+    Object.keys(storedUnits).length
+      ? storedUnits
+      : {};
 
-  if(!Object.keys(unitMastery).length){
+  if (!Object.keys(unitMastery).length) {
     (KagakuData.units || []).forEach(unit => {
       unitMastery[unit.id] =
         Mastery.unitScore(
@@ -356,85 +377,74 @@ if(!data || typeof data !== 'object'){
     });
   }
 
-  /*
-    最終学習日時
-  */
-  let lastStudyAt =
-    snapshot.last_study_at || null;
-
-  if(!lastStudyAt && data.lastStudyDate){
-    lastStudyAt =
-      new Date(
-        data.lastStudyDate + 'T23:59:59'
-      ).toISOString();
-  }
-
   return {
     mastery,
     attempt_count: attemptCount,
-    total_time_seconds: totalTimeSeconds,
-    last_study_at: lastStudyAt,
+    total_time_seconds: totalTime,
+
+    last_study_at:
+      snapshot?.last_study_at ||
+      (
+        data.lastStudyDate
+          ? new Date(
+              data.lastStudyDate +
+              'T23:59:59'
+            ).toISOString()
+          : null
+      ),
+
     unit_mastery: unitMastery,
     data,
     attempts
   };
 }
-/* =========================
-   ダッシュボード
-========================= */
 
-function render(){
-  const map=latestByUser();
 
-  const rows=
-    allStudents.map(
-      u=>({
-        u,
-        s:snapshotData(
-          map.get(u.id)
-        )
-      })
-    );
+/* =========================================================
+   ダッシュボード表示
+========================================================= */
 
-  const active=
+function render() {
+  const map = latestByUser();
+
+  const rows =
+    allStudents.map(u => ({
+      u,
+      s: snapshotData(map.get(u.id))
+    }));
+
+  const active =
     rows.filter(
-      x=>isToday(
-        x.s.last_study_at
-      )
+      x => isToday(x.s.last_study_at)
     ).length;
 
-  const avg=
+  const avg =
     rows.length
       ? Math.round(
           rows.reduce(
-            (a,x)=>
-              a+
-              Number(
-                x.s.mastery||0
-              ),
+            (a, x) =>
+              a +
+              Number(x.s.mastery || 0),
             0
-          )/rows.length
+          ) / rows.length
         )
       : 0;
 
-  const review=
+  const review =
     rows.filter(
-      x=>
-        Number(
-          x.s.mastery||0
-        )<60
+      x => Number(x.s.mastery || 0) < 60
     ).length;
 
-  $('a-users').textContent=
+  $('a-users').textContent =
     rows.length;
 
-  $('a-active').textContent=
+  $('a-active').textContent =
     active;
 
-  $('a-mastery').textContent=
+  $('a-mastery').textContent =
     `${avg}% ${grade(avg)}`;
 
-  $('a-review').textContent=
+  $('a-review').textContent =
     review;
 
   renderStudents(rows);
@@ -443,277 +453,243 @@ function render(){
   renderOverallCharts();
 }
 
-function renderStudents(rows){
-  const q=
-    $('student-search')
-      .value
+function renderStudents(rows) {
+  const q =
+    ($('student-search').value || '')
       .trim()
       .toLowerCase();
 
-  const f=
+  const f =
     $('student-filter').value;
 
-  const filtered=
-    rows.filter(
-      x=>{
-        const text=
-          `${x.u.display_name||''} ${x.u.email||''}`
-            .toLowerCase();
+  const filtered =
+    rows.filter(x => {
+      const text =
+        `${x.u.display_name || ''} ${
+          x.u.email || ''
+        }`.toLowerCase();
 
-        if(
-          q&&
-          !text.includes(q)
-        )return false;
-
-        if(
-          f==='review'&&
-          Number(
-            x.s.mastery||0
-          )>=60
-        )return false;
-
-        if(
-          f==='active'&&
-          !isToday(
-            x.s.last_study_at
-          )
-        )return false;
-
-        return true
+      if (
+        q &&
+        !text.includes(q)
+      ) {
+        return false;
       }
-    );
 
-  $('student-tbody').innerHTML=
+      if (
+        f === 'review' &&
+        Number(x.s.mastery || 0) >= 60
+      ) {
+        return false;
+      }
+
+      if (
+        f === 'active' &&
+        !isToday(x.s.last_study_at)
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+
+  $('student-tbody').innerHTML =
     filtered.length
-      ? filtered.map(
-          x=>{
-            const m=
-              Math.round(
-                Number(
-                  x.s.mastery||0
-                )
-              );
+      ? filtered.map(x => {
+          const m =
+            Math.round(
+              Number(x.s.mastery || 0)
+            );
 
-            const g=grade(m);
+          const g = grade(m);
 
-            return `
-              <tr>
-                <td>
-                  <button
-                    class="student-link"
-                    data-user-id="${esc(x.u.id)}"
-                  >
-                    <strong>
-                      ${esc(
-                        x.u.display_name||
-                        '名前未設定'
-                      )}
-                    </strong>
-                  </button>
-                  <br>
-                  <span class="muted">
-                    ${esc(
-                      x.u.email||''
-                    )}
-                  </span>
-                </td>
+          return `
+<tr>
+  <td>
+    <button
+      class="student-link"
+      data-user-id="${esc(x.u.id)}"
+    >
+      <strong>
+        ${esc(
+          x.u.display_name ||
+          '名前未設定'
+        )}
+      </strong>
+    </button>
+    <br>
+    <span class="muted">
+      ${esc(x.u.email || '')}
+    </span>
+  </td>
 
-                <td>
-                  <span class="badge badge-${g.toLowerCase()}">
-                    ${m}%・${g}
-                  </span>
-                </td>
+  <td>
+    <span class="badge badge-${g.toLowerCase()}">
+      ${m}%・${g}
+    </span>
+  </td>
 
-                <td>
-                  ${Number(
-                    x.s.attempt_count||0
-                  )}問
-                </td>
+  <td>
+    ${Number(x.s.attempt_count || 0)}問
+  </td>
 
-                <td>
-                  ${fmtTime(
-                    x.s.total_time_seconds
-                  )}
-                </td>
+  <td>
+    ${fmtTime(x.s.total_time_seconds)}
+  </td>
 
-                <td>
-                  ${fmtDate(
-                    x.s.last_study_at
-                  )}
-                </td>
-              </tr>
-            `
-          }
-        ).join('')
+  <td>
+    ${fmtDate(x.s.last_study_at)}
+  </td>
+</tr>
+`;
+        }).join('')
       : `
-        <tr>
-          <td
-            colspan="5"
-            class="empty"
-          >
-            該当する学習者はいません。
-          </td>
-        </tr>
-      `;
+<tr>
+  <td
+    colspan="5"
+    class="empty"
+  >
+    該当する学習者はいません。
+  </td>
+</tr>
+`;
 
   document
-    .querySelectorAll(
-      '.student-link'
-    )
-    .forEach(
-      btn=>
-        btn.addEventListener(
-          'click',
-          ()=>
-            showStudent(
-              btn.dataset.userId
-            )
+    .querySelectorAll('.student-link')
+    .forEach(btn => {
+      btn.addEventListener(
+        'click',
+        () => showStudent(
+          btn.dataset.userId
         )
-    );
+      );
+    });
 }
 
-function renderUnits(rows){
-  const totals={};
+function renderUnits(rows) {
+  const totals = {};
 
-  for(
-    const x of rows
-  ){
-    for(
-      const [id,v]
+  for (const x of rows) {
+    for (
+      const [id, v]
       of Object.entries(
-        x.s.unit_mastery||{}
+        x.s.unit_mastery || {}
       )
-    ){
-      if(!totals[id])
-        totals[id]=[];
+    ) {
+      if (!totals[id]) {
+        totals[id] = [];
+      }
 
       totals[id].push(
-        Number(v)||0
+        Number(v) || 0
       );
     }
   }
 
-  $('unit-bars').innerHTML=
+  $('unit-bars').innerHTML =
     KagakuData.units
-      .map(
-        u=>{
-          const vals=
-            totals[u.id]||[];
+      .map(u => {
+        const vals =
+          totals[u.id] || [];
 
-          const v=
-            vals.length
-              ? Math.round(
-                  vals.reduce(
-                    (a,b)=>
-                      a+b,
-                    0
-                  )/
-                  vals.length
-                )
-              : 0;
+        const v =
+          vals.length
+            ? Math.round(
+                vals.reduce(
+                  (a, b) => a + b,
+                  0
+                ) / vals.length
+              )
+            : 0;
 
-          return `
-            <div class="unit-row">
-              <div>
-                <div class="unit-name">
-                  ${esc(u.title)}
-                </div>
+        return `
+<div class="unit-row">
+  <div>
+    <div class="unit-name">
+      ${esc(u.title)}
+    </div>
 
-                <div class="progress">
-                  <i
-                    style="width:${v}%"
-                  ></i>
-                </div>
-              </div>
+    <div class="progress">
+      <i style="width:${v}%"></i>
+    </div>
+  </div>
 
-              <div class="unit-score">
-                ${v}%・${grade(v)}
-              </div>
-            </div>
-          `
-        }
-      )
+  <div class="unit-score">
+    ${v}%・${grade(v)}
+  </div>
+</div>
+`;
+      })
       .join('');
 }
 
-function renderRecent(){
-  const items=
+function renderRecent() {
+  const items =
     allSnapshots
-      .slice(0,8)
-      .map(
-        raw=>{
-          const u=
-            allStudents.find(
-              x=>
-                x.id===
-                raw.user_id
-            );
+      .slice(0, 8)
+      .map(raw => {
+        const u =
+          allStudents.find(
+            x => x.id === raw.user_id
+          );
 
-          const s=
-            snapshotData(raw);
+        const s =
+          snapshotData(raw);
 
-          return `
-            <div class="recent-item">
-              <div>
-                <strong>
-                  ${esc(
-                    u?.display_name||
-                    u?.email||
-                    '学習者'
-                  )}
-                </strong>
+        return `
+<div class="recent-item">
+  <div>
+    <strong>
+      ${esc(
+        u?.display_name ||
+        u?.email ||
+        '学習者'
+      )}
+    </strong>
+    <br>
+    <span class="muted">
+      定着度 ${Math.round(
+        Number(s.mastery || 0)
+      )}%
+    </span>
+  </div>
 
-                <br>
+  <span class="muted">
+    ${fmtDate(
+      raw.updated_at ||
+      s.last_study_at
+    )}
+  </span>
+</div>
+`;
+      });
 
-                <span class="muted">
-                  定着度
-                  ${Math.round(
-                    Number(
-                      s.mastery||0
-                    )
-                  )}%
-                </span>
-              </div>
-
-              <span class="muted">
-                ${fmtDate(
-                  raw.updated_at||
-                  s.last_study_at
-                )}
-              </span>
-            </div>
-          `
-        }
-      );
-
-  $('recent-list').innerHTML=
+  $('recent-list').innerHTML =
     items.length
       ? items.join('')
       : `
-        <div class="empty">
-          まだ学習データがありません。
-        </div>
-      `;
+<div class="empty">
+  まだ学習データがありません。
+</div>
+`;
 }
 
-/* =========================
-   グラフ
-========================= */
 
-function historyForUser(userId){
+/* =========================================================
+   学習履歴
+========================================================= */
+
+function historyForUser(userId) {
   return allHistory
     .filter(
-      h=>h.user_id===userId
+      h => h.user_id === userId
     )
     .sort(
-      (a,b)=>
-        String(
-          a.recorded_date
-        ).localeCompare(
-          String(
-            b.recorded_date
+      (a, b) =>
+        String(a.recorded_date)
+          .localeCompare(
+            String(b.recorded_date)
           )
-        )
     );
 }
 
@@ -723,80 +699,71 @@ function renderBars(
   items,
   maxValue,
   formatter
-){
-  const chart=$(chartId);
-  const labels=$(labelId);
+) {
+  const chart = $(chartId);
+  const labels = $(labelId);
 
-  if(!items.length){
-    chart.innerHTML=
+  if (!items.length) {
+    chart.innerHTML =
       '<div class="empty" style="width:100%">履歴がまだありません。</div>';
 
-    labels.innerHTML='';
-    return
+    labels.innerHTML = '';
+
+    return;
   }
 
-  const max=
+  const max =
     Math.max(
-      maxValue||0,
+      maxValue || 0,
       ...items.map(
-        x=>Number(
-          x.value
-        )||0
+        x => Number(x.value) || 0
       ),
       1
     );
 
-  chart.innerHTML=
-    items.map(
-      x=>{
-        const v=
-          Math.max(
-            0,
-            Number(
-              x.value
-            )||0
-          );
+  chart.innerHTML =
+    items.map(x => {
+      const v =
+        Math.max(
+          0,
+          Number(x.value) || 0
+        );
 
-        const h=
-          Math.max(
-            3,
-            Math.round(
-              v/max*100
-            )
-          );
+      const h =
+        Math.max(
+          3,
+          Math.round(
+            v / max * 100
+          )
+        );
 
-        return `
-          <div
-            class="chart-bar"
-            style="height:${h}%"
-            title="${esc(
-              x.label
-            )}: ${esc(
-              formatter(v)
-            )}"
-          >
-            <span>
-              ${esc(
-                formatter(v)
-              )}
-            </span>
-          </div>
-        `
-      }
-    ).join('');
+      return `
+<div
+  class="chart-bar"
+  style="height:${h}%"
+  title="${esc(x.label)}: ${esc(formatter(v))}"
+>
+  <span>
+    ${esc(formatter(v))}
+  </span>
+</div>
+`;
+    }).join('');
 
-  labels.innerHTML=
-    items.map(
-      x=>
-        `<span>${esc(x.label)}</span>`
-    ).join('');
+  labels.innerHTML =
+    items
+      .map(
+        x =>
+          `<span>${esc(x.label)}</span>`
+      )
+      .join('');
 }
 
-function historyDays(){
+function historyDays() {
   return [
     ...new Set(
       allHistory.map(
-        h=>h.recorded_date
+        h => h.recorded_date
       )
     )
   ]
@@ -804,104 +771,90 @@ function historyDays(){
     .slice(-14);
 }
 
-function renderOverallCharts(){
-  const days=
+function renderOverallCharts() {
+  const days =
     historyDays();
 
-  const mastery=
-    days.map(
-      day=>{
-        const rows=
-          allHistory.filter(
-            h=>
-              h.recorded_date===
-              day
+  const mastery =
+    days.map(day => {
+      const rows =
+        allHistory.filter(
+          h =>
+            h.recorded_date === day
+        );
+
+      return {
+        label: fmtDay(day),
+        value:
+          rows.length
+            ? Math.round(
+                rows.reduce(
+                  (a, r) =>
+                    a +
+                    Number(
+                      r.mastery || 0
+                    ),
+                  0
+                ) / rows.length
+              )
+            : 0
+      };
+    });
+
+  const time =
+    days.map((day, i) => {
+      const prev =
+        days[i - 1];
+
+      let total = 0;
+
+      for (const u of allStudents) {
+        const cur =
+          allHistory.find(
+            h =>
+              h.user_id === u.id &&
+              h.recorded_date === day
           );
 
-        return {
-          label:
-            fmtDay(day),
+        if (!cur) continue;
 
-          value:
-            rows.length
-              ? Math.round(
-                  rows.reduce(
-                    (a,r)=>
-                      a+
-                      Number(
-                        r.mastery||0
-                      ),
-                    0
-                  )/
-                  rows.length
-                )
-              : 0
-        }
-      }
-    );
+        const old =
+          prev
+            ? allHistory.find(
+                h =>
+                  h.user_id === u.id &&
+                  h.recorded_date === prev
+              )
+            : null;
 
-  const time=
-    days.map(
-      (day,i)=>{
-        const prev=
-          days[i-1];
-
-        let total=0;
-
-        for(
-          const u of allStudents
-        ){
-          const cur=
-            allHistory.find(
-              h=>
-                h.user_id===u.id&&
-                h.recorded_date===day
-            );
-
-          if(!cur)continue;
-
-          const old=
-            prev
-              ? allHistory.find(
-                  h=>
-                    h.user_id===u.id&&
-                    h.recorded_date===prev
-                )
-              : null;
-
-          total+=Math.max(
-            0,
-            Number(
-              cur.total_time_seconds||0
-            )-
+        total += Math.max(
+          0,
+          Number(
+            cur.total_time_seconds || 0
+          ) -
             (
               old
                 ? Number(
-                    old.total_time_seconds||0
+                    old.total_time_seconds || 0
                   )
                 : 0
             )
-          );
-        }
-
-        return {
-          label:
-            fmtDay(day),
-
-          value:
-            Math.round(
-              total/60
-            )
-        }
+        );
       }
-    );
+
+      return {
+        label: fmtDay(day),
+        value:
+          Math.round(total / 60)
+      };
+    });
 
   renderBars(
     'overall-mastery-chart',
     'overall-mastery-labels',
     mastery,
     100,
-    v=>`${v}%`
+    v => `${v}%`
   );
 
   renderBars(
@@ -911,398 +864,379 @@ function renderOverallCharts(){
     Math.max(
       60,
       ...time.map(
-        x=>x.value
+        x => x.value
       )
     ),
-    v=>`${v}分`
+    v => `${v}分`
   );
 }
 
-function studentHistoryChart(history){
+function studentHistoryChart(history) {
   return history
     .slice(-10)
-    .map(
-      h=>({
-        label:
-          fmtDay(
-            h.recorded_date
-          ),
-        value:
-          Number(
-            h.mastery||0
-          )
-      })
-    );
+    .map(h => ({
+      label: fmtDay(
+        h.recorded_date
+      ),
+      value:
+        Number(h.mastery || 0)
+    }));
 }
 
-function questionStats(attempts){
+
+/* =========================================================
+   問題別統計
+========================================================= */
+
+function questionStats(attempts) {
   return KagakuData.questions
-    .map(
-      q=>{
-        const a=
-          attempts[q.id];
+    .map(q => {
+      const a =
+        attempts[q.id];
 
-        if(
-          !a||
-          !Number(a.count)
-        )return null;
-
-        const count=
-          Number(
-            a.count
-          )||0;
-
-        const correct=
-          Number(
-            a.correct
-          )||0;
-
-        const acc=
-          Math.round(
-            correct/
-            count*
-            100
-          );
-
-        const score=
-          Math.round(
-            Mastery.questionScore(
-              a
-            )
-          );
-
-        return {
-          q,
-          count,
-          correct,
-          acc,
-          score,
-          lastAttempt:
-            a.lastAttempt
-        }
+      if (
+        !a ||
+        !Number(a.count)
+      ) {
+        return null;
       }
-    )
+
+      const count =
+        Number(a.count) || 0;
+
+      const correct =
+        Number(a.correct) || 0;
+
+      const acc =
+        Math.round(
+          correct / count * 100
+        );
+
+      const score =
+        Math.round(
+          Mastery.questionScore(a)
+        );
+
+      return {
+        q,
+        count,
+        correct,
+        acc,
+        score,
+        lastAttempt:
+          a.lastAttempt
+      };
+    })
     .filter(Boolean)
     .sort(
-      (a,b)=>
-        a.score-b.score
+      (a, b) =>
+        a.score - b.score
     );
 }
 
-function showStudent(userId){
-  const u=
+
+/* =========================================================
+   生徒詳細
+========================================================= */
+
+function showStudent(userId) {
+  const u =
     allStudents.find(
-      x=>x.id===userId
+      x => x.id === userId
     );
 
- const snapshotMap = latestByUser();
-const raw = snapshotMap.get(userId);
-
-  if(!u)return;
-
-  const s=
-    snapshotData(raw);
-
-  const m=
-    Math.round(
-      Number(
-        s.mastery||0
-      )
-    );
-
-  const data=
-    s.data||{};
-
-  const attempts=
-    data.attempts||{};
-
-  const history=
-    historyForUser(
+  const raw =
+    latestByUser().get(
       userId
     );
 
-  const unitRows=
-    KagakuData.units
-      .map(
-        unit=>`
-          <div class="detail-unit">
-            <span>
-              ${esc(
-                unit.title
-              )}
-            </span>
+  if (!u) return;
 
-            <strong>
-              ${Math.round(
-                Number(
-                  s.unit_mastery?.[
-                    unit.id
-                  ]||0
-                )
-              )}%・${grade(
-                s.unit_mastery?.[
-                  unit.id
-                ]
-              )}
-            </strong>
-          </div>
-        `
-      )
-      .join('');
+  const s =
+    snapshotData(raw);
 
-  const weak=
-    questionStats(
-      attempts
-    ).slice(
-      0,
-      8
+  const m =
+    Math.round(
+      Number(s.mastery || 0)
     );
 
-  const weakHtml=
+  const data =
+    s.data || {};
+
+  const attempts =
+    data.attempts || {};
+
+  const history =
+    historyForUser(userId);
+
+  const unitRows =
+    KagakuData.units
+      .map(unit => `
+<div class="detail-unit">
+  <span>
+    ${esc(unit.title)}
+  </span>
+
+  <strong>
+    ${Math.round(
+      Number(
+        s.unit_mastery?.[unit.id] ||
+        0
+      )
+    )}%・${grade(
+      s.unit_mastery?.[unit.id]
+    )}
+  </strong>
+</div>
+`)
+      .join('');
+
+  const weak =
+    questionStats(attempts)
+      .slice(0, 8);
+
+  const weakHtml =
     weak.length
       ? weak
           .map(
-            x=>`
-              <li>
-                ${esc(
-                  x.q.question
-                )}
-
-                <span class="muted">
-                  ${x.count}回・
-                  正答率${x.acc}%・
-                  定着${x.score}%
-                </span>
-              </li>
-            `
+            x => `
+<li>
+  ${esc(x.q.question)}
+  <span class="muted">
+    ${x.count}回・正答率${x.acc}%・定着${x.score}%
+  </span>
+</li>
+`
           )
           .join('')
       : `
-          <li>
-            まだ十分な演習データがありません。
-          </li>
-        `;
+<li>
+  まだ十分な演習データがありません。
+</li>
+`;
 
-  const qRows=
-    questionStats(
-      attempts
-    )
-      .slice(
-        0,
-        20
-      )
+  const qRows =
+    questionStats(attempts)
+      .slice(0, 20)
       .map(
-        x=>`
-          <tr>
-            <td>
-              ${esc(x.q.id)}
-            </td>
-
-            <td>
-              ${esc(
-                x.q.question
-              )}
-            </td>
-
-            <td>
-              ${x.count}回
-            </td>
-
-            <td>
-              ${x.acc}%
-            </td>
-
-            <td>
-              ${x.score}%・${grade(
-                x.score
-              )}
-            </td>
-          </tr>
-        `
+        x => `
+<tr>
+  <td>${esc(x.q.id)}</td>
+  <td>${esc(x.q.question)}</td>
+  <td>${x.count}回</td>
+  <td>${x.acc}%</td>
+  <td>
+    ${x.score}%・${grade(x.score)}
+  </td>
+</tr>
+`
       )
       .join('');
 
-  const hist=
+  const hist =
     studentHistoryChart(
       history
     );
 
-  $('detail-content').innerHTML=`
-    <div class="detail-head">
-      <div>
-        <div class="eyebrow">
-          学習者詳細
-        </div>
+  $('detail-content').innerHTML = `
+<div class="detail-head">
 
-        <h2>
-          ${esc(
-            u.display_name||
-            '名前未設定'
-          )}
-        </h2>
-
-        <p class="muted">
-          ${esc(
-            u.email||''
-          )}
-        </p>
-      </div>
-
-      <button
-        class="btn btn-outline btn-sm"
-        id="close-detail"
-      >
-        閉じる
-      </button>
+  <div>
+    <div class="eyebrow">
+      学習者詳細
     </div>
 
-    <div class="detail-stats">
-      <div>
-        <span>
-          総合定着度
-        </span>
+    <h2>
+      ${esc(
+        u.display_name ||
+        '名前未設定'
+      )}
+    </h2>
 
-        <strong>
-          ${m}%・${grade(m)}
-        </strong>
-      </div>
+    <p class="muted">
+      ${esc(u.email || '')}
+    </p>
+  </div>
 
-      <div>
-        <span>
-          確認問題
-        </span>
+  <button
+    class="btn btn-outline btn-sm"
+    id="close-detail"
+  >
+    閉じる
+  </button>
 
-        <strong>
-          ${Number(
-            s.attempt_count||0
-          )}問
-        </strong>
-      </div>
+</div>
 
-      <div>
-        <span>
-          学習時間
-        </span>
 
-        <strong>
-          ${fmtTime(
-            s.total_time_seconds
-          )}
-        </strong>
-      </div>
+<div class="detail-stats">
 
-      <div>
-        <span>
-          最終学習
-        </span>
+  <div>
+    <span>
+      総合定着度
+    </span>
 
-        <strong>
-          ${fmtDate(
-            s.last_study_at
-          )}
-        </strong>
-      </div>
-    </div>
+    <strong>
+      ${m}%・${grade(m)}
+    </strong>
+  </div>
 
-    <div class="detail-section">
-      <h3>
-        定着度の推移
-      </h3>
+  <div>
+    <span>
+      解いた問題
+    </span>
 
-      <div
-        class="chart-wrap"
-        id="student-history-chart"
-      ></div>
+    <strong>
+      ${Number(
+        s.attempt_count || 0
+      )}問
+    </strong>
+  </div>
 
-      <div
-        class="chart-labels"
-        id="student-history-labels"
-      ></div>
+  <div>
+    <span>
+      学習時間
+    </span>
 
-      <p class="stat-note">
-        学習履歴を保存した日だけ表示されます。
-      </p>
-    </div>
+    <strong>
+      ${fmtTime(
+        s.total_time_seconds
+      )}
+    </strong>
+  </div>
 
-    <div class="detail-section">
-      <h3>
-        単元別定着度
-      </h3>
+  <div>
+    <span>
+      最終学習
+    </span>
 
-      <div class="detail-units">
-        ${unitRows}
-      </div>
-    </div>
+    <strong>
+      ${fmtDate(
+        s.last_study_at
+      )}
+    </strong>
+  </div>
 
-    <div class="detail-section">
-      <h3>
-        優先して復習したい問題
-      </h3>
+</div>
 
-      <ol class="weak-list">
-        ${weakHtml}
-      </ol>
-    </div>
 
-    <div class="detail-section">
-      <h3>
-        問題別の演習状況
-      </h3>
+<div class="detail-section">
 
-      ${
-        qRows
-          ? `
-            <div class="table-wrap">
-              <table class="detail-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>問題</th>
-                    <th>回数</th>
-                    <th>正答率</th>
-                    <th>定着度</th>
-                  </tr>
-                </thead>
+  <h3>
+    定着度の推移
+  </h3>
 
-                <tbody>
-                  ${qRows}
-                </tbody>
-              </table>
-            </div>
-          `
-          : `
-            <p class="muted">
-              まだ問題を解いていません。
-            </p>
-          `
-      }
-    </div>
-  `;
+  <div
+    class="chart-wrap"
+    id="student-history-chart"
+  ></div>
 
-  $('student-detail').hidden=false;
+  <div
+    class="chart-labels"
+    id="student-history-labels"
+  ></div>
 
-  $('close-detail').onclick=()=>{
-    $('student-detail').hidden=true
-  };
+  <p class="stat-note">
+    学習履歴を保存した日だけ表示されます。
+  </p>
+
+</div>
+
+
+<div class="detail-section">
+
+  <h3>
+    単元別定着度
+  </h3>
+
+  <div class="detail-units">
+    ${unitRows}
+  </div>
+
+</div>
+
+
+<div class="detail-section">
+
+  <h3>
+    優先して復習したい問題
+  </h3>
+
+  <ol class="weak-list">
+    ${weakHtml}
+  </ol>
+
+</div>
+
+
+<div class="detail-section">
+
+  <h3>
+    問題別の演習状況
+  </h3>
+
+  ${
+    qRows
+      ? `
+<div class="table-wrap">
+
+<table class="detail-table">
+
+<thead>
+<tr>
+  <th>ID</th>
+  <th>問題</th>
+  <th>回数</th>
+  <th>正答率</th>
+  <th>定着度</th>
+</tr>
+</thead>
+
+<tbody>
+  ${qRows}
+</tbody>
+
+</table>
+
+</div>
+`
+      : `
+<p class="muted">
+  まだ問題を解いていません。
+</p>
+`
+  }
+
+</div>
+`;
+
+  $('student-detail').hidden =
+    false;
+
+  $('close-detail').onclick =
+    () => {
+      $('student-detail').hidden =
+        true;
+    };
 
   renderBars(
     'student-history-chart',
     'student-history-labels',
     hist,
     100,
-    v=>`${v}%`
+    v => `${v}%`
   );
 }
 
-/* =========================
-   学習者CSV
-========================= */
 
-function exportStudentsCSV(){
-  const map=
+/* =========================================================
+   生徒CSV出力
+========================================================= */
+
+function exportStudentsCSV() {
+  const map =
     latestByUser();
 
-  const header=[
+  const header = [
     '学習者',
     'メール',
     '総合定着度',
@@ -1312,68 +1246,61 @@ function exportStudentsCSV(){
     '最終学習'
   ];
 
-  const lines=[
+  const lines = [
     header,
 
-    ...allStudents.map(
-      u=>{
-        const s=
-          snapshotData(
-            map.get(
-              u.id
-            )
-          );
+    ...allStudents.map(u => {
+      const s =
+        snapshotData(
+          map.get(u.id)
+        );
 
-        const m=
-          Math.round(
-            Number(
-              s.mastery||0
-            )
-          );
+      const m =
+        Math.round(
+          Number(s.mastery || 0)
+        );
 
-        return [
-          u.display_name||'',
-          u.email||'',
-          m,
-          grade(m),
+      return [
+        u.display_name || '',
+        u.email || '',
+        m,
+        grade(m),
+        Number(
+          s.attempt_count || 0
+        ),
+        Math.round(
           Number(
-            s.attempt_count||0
-          ),
-          Math.round(
-            Number(
-              s.total_time_seconds||0
-            )/60
-          ),
-          s.last_study_at
-            ? new Date(
-                s.last_study_at
-              ).toLocaleString(
-                'ja-JP'
-              )
-            : ''
-        ]
-      }
-    )
+            s.total_time_seconds || 0
+          ) / 60
+        ),
+        s.last_study_at
+          ? new Date(
+              s.last_study_at
+            ).toLocaleString(
+              'ja-JP'
+            )
+          : ''
+      ];
+    })
   ];
 
-  const csv=
-    '\ufeff'+
+  const csv =
+    '\ufeff' +
     lines
-      .map(
-        row=>
-          row
-            .map(
-              v=>
-                `"${String(v).replace(
-                  /"/g,
-                  '""'
-                )}"`
-            )
-            .join(',')
+      .map(row =>
+        row
+          .map(
+            v =>
+              `"${String(v).replace(
+                /"/g,
+                '""'
+              )}"`
+          )
+          .join(',')
       )
       .join('\n');
 
-  const blob=
+  const blob =
     new Blob(
       [csv],
       {
@@ -1382,95 +1309,91 @@ function exportStudentsCSV(){
       }
     );
 
-  const url=
+  const url =
     URL.createObjectURL(
       blob
     );
 
-  const a=
-    document.createElement(
-      'a'
-    );
+  const a =
+    document.createElement('a');
 
-  a.href=url;
+  a.href = url;
 
-  a.download=
+  a.download =
     `kagaku_lab_students_${
       new Date()
         .toISOString()
-        .slice(
-          0,
-          10
-        )
+        .slice(0, 10)
     }.csv`;
 
   a.click();
 
-  URL.revokeObjectURL(
-    url
-  );
+  URL.revokeObjectURL(url);
 }
 
-/* =========================
-   問題管理
-========================= */
 
-function cloudMap(){
+/* =========================================================
+   問題管理
+========================================================= */
+
+function cloudMap() {
   return new Map(
     cloudQuestionRows.map(
-      r=>[
-        r.id,
-        r
-      ]
+      r => [r.id, r]
     )
   );
 }
 
-function adminQuestions(){
-  const map=
+function adminQuestions() {
+  const map =
     cloudMap();
 
-  const out=[];
+  const out = [];
 
-  for(
-    const q of KagakuData.questions
-  ){
-    const r=
+  for (
+    const q
+    of KagakuData.questions
+  ) {
+    const r =
       map.get(q.id);
 
-    if(r?.is_deleted)
+    if (r?.is_deleted) {
       continue;
+    }
 
     out.push({
       q,
-      r:r||null
+      r: r || null
     });
   }
 
-  for(
-    const r of cloudQuestionRows
-  ){
-    if(
-      r.is_deleted||
+  for (
+    const r
+    of cloudQuestionRows
+  ) {
+    if (
+      r.is_deleted ||
       KagakuData.questions.some(
-        q=>q.id===r.id
+        q => q.id === r.id
       )
-    )continue;
+    ) {
+      continue;
+    }
 
     out.push({
-      q:{
-        id:r.id,
-        unitId:r.unit_id,
-        difficulty:r.difficulty,
-        question:r.question,
-        options:r.options||[],
+      q: {
+        id: r.id,
+        unitId: r.unit_id,
+        difficulty: r.difficulty,
+        question: r.question,
+        options: r.options || [],
         answerIndex:
           Number(
             r.answer_index
-          )||0,
+          ) || 0,
         explanation:
-          r.explanation||'',
-        tags:r.tags||[]
+          r.explanation || '',
+        tags: r.tags || []
       },
       r
     });
@@ -1479,14 +1402,13 @@ function adminQuestions(){
   return out;
 }
 
-async function loadQuestionAdminData(){
-  if(!supabaseClient)
-    return;
+async function loadQuestionAdminData() {
+  if (!supabaseClient) return;
 
   const {
     data,
     error
-  }=
+  } =
     await supabaseClient
       .from('questions')
       .select(
@@ -1495,286 +1417,282 @@ async function loadQuestionAdminData(){
       .order(
         'updated_at',
         {
-          ascending:false
+          ascending: false
         }
       );
 
-  if(error){
-    $('question-tbody').innerHTML=`
-      <tr>
-        <td
-          colspan="6"
-          class="empty"
-        >
-          問題管理テーブルがまだ設定されていません。
-          QUESTIONS_SETUP.mdのSQLを実行してください。
-        </td>
-      </tr>
-    `;
+  if (error) {
+    $('question-tbody').innerHTML =
+      `
+<tr>
+  <td
+    colspan="6"
+    class="empty"
+  >
+    問題管理テーブルがまだ設定されていません。
+    QUESTIONS_SETUP.mdのSQLを実行してください。
+  </td>
+</tr>
+`;
 
-    return
+    return;
   }
 
-  cloudQuestionRows=
-    data||[];
+  cloudQuestionRows =
+    data || [];
 
   populateQuestionUnitFilters();
+
   renderQuestionAdmin();
 
   await loadTests();
   await loadAnnouncements();
 }
 
-function populateQuestionUnitFilters(){
+function populateQuestionUnitFilters() {
   [
     'question-unit-filter',
     'q-unit'
-  ].forEach(
-    id=>{
-      const el=$(id);
+  ].forEach(id => {
+    const el = $(id);
 
-      if(!el)return;
+    if (!el) return;
 
-      const current=
-        el.value;
+    const current =
+      el.value;
 
-      el.innerHTML=
-        (
-          id===
-          'question-unit-filter'
-            ? '<option value="all">全単元</option>'
-            : ''
-        )+
-        KagakuData.units
-          .map(
-            u=>
-              `<option value="${esc(
-                u.id
-              )}">
-                ${esc(
-                  u.title
-                )}
-              </option>`
-          )
-          .join('');
+    el.innerHTML =
+      (
+        id ===
+        'question-unit-filter'
+          ? '<option value="all">全単元</option>'
+          : ''
+      ) +
+      KagakuData.units
+        .map(
+          u =>
+            `<option value="${esc(
+              u.id
+            )}">
+              ${esc(u.title)}
+            </option>`
+        )
+        .join('');
 
-      if(current)
-        el.value=current;
+    if (current) {
+      el.value =
+        current;
     }
-  );
+  });
 }
 
-function renderQuestionAdmin(){
-  const search=
-    (
-      $('question-search')?.value||
-      ''
-    )
+function renderQuestionAdmin() {
+  const search =
+    ($('question-search')?.value || '')
       .trim()
       .toLowerCase();
 
-  const status=
-    $('question-status-filter')?.value||
-    'all';
+  const status =
+    $('question-status-filter')
+      ?.value || 'all';
 
-  const unit=
-    $('question-unit-filter')?.value||
-    'all';
+  const unit =
+    $('question-unit-filter')
+      ?.value || 'all';
 
-  const list=
+  const list =
     adminQuestions()
-      .filter(
-        ({q,r})=>{
-          const pub=
+      .filter(({ q, r }) => {
+        const pub =
+          r
+            ? r.is_published
+            : true;
+
+        const hay =
+          `${q.id} ${q.question} ${
+            (q.tags || []).join(' ')
+          }`.toLowerCase();
+
+        if (
+          search &&
+          !hay.includes(search)
+        ) {
+          return false;
+        }
+
+        if (
+          unit !== 'all' &&
+          q.unitId !== unit
+        ) {
+          return false;
+        }
+
+        if (
+          status === 'published' &&
+          !pub
+        ) {
+          return false;
+        }
+
+        if (
+          status === 'unpublished' &&
+          pub
+        ) {
+          return false;
+        }
+
+        return true;
+      });
+
+  $('question-tbody').innerHTML =
+    list.length
+      ? list.map(({ q, r }) => {
+          const pub =
             r
               ? r.is_published
               : true;
 
-          const hay=
-            `${q.id} ${q.question} ${(q.tags||[]).join(' ')}`
-              .toLowerCase();
+          const source =
+            r
+              ? 'cloud'
+              : '内蔵';
 
-          if(
-            search&&
-            !hay.includes(search)
-          )return false;
+          return `
+<tr>
 
-          if(
-            unit!=='all'&&
-            q.unitId!==unit
-          )return false;
+<td>
+  <input
+    type="checkbox"
+    class="question-check"
+    value="${esc(q.id)}"
+  >
+</td>
 
-          if(
-            status==='published'&&
-            !pub
-          )return false;
+<td>
+  <strong>
+    ${esc(q.question)}
+  </strong>
 
-          if(
-            status==='unpublished'&&
-            pub
-          )return false;
+  <br>
 
-          return true;
-        }
-      );
-
-  $('question-tbody').innerHTML=
-    list.length
-      ? list
-          .map(
-            ({q,r})=>{
-              const pub=
-                r
-                  ? r.is_published
-                  : true;
-
-              const source=
-                r
-                  ? 'cloud'
-                  : '内蔵';
-
-              return `
-                <tr>
-                  <td>
-                    <input
-                      type="checkbox"
-                      class="question-check"
-                      value="${esc(q.id)}"
-                    >
-                  </td>
-
-                  <td>
-                    <strong>
-                      ${esc(
-                        q.question
-                      )}
-                    </strong>
-
-                    <br>
-
-                    <span class="muted">
-                      ${esc(q.id)}
-                      ・
-                      ${source}
-                      ${
-                        (q.tags||[]).length
-                          ? ' ・ '+
-                            esc(
-                              q.tags.join(
-                                ' / '
-                              )
-                            )
-                          : ''
-                      }
-                    </span>
-                  </td>
-
-                  <td>
-                    ${esc(
-                      KagakuData.units.find(
-                        u=>
-                          u.id===
-                          q.unitId
-                      )?.title||
-                      q.unitId||
-                      '—'
-                    )}
-                  </td>
-
-                  <td>
-                    ${esc(
-                      q.difficulty
-                    )}
-                  </td>
-
-                  <td>
-                    <span class="publish-dot">
-                      ${
-                        pub
-                          ? '🟢 公開'
-                          : '⚪ 非公開'
-                      }
-                    </span>
-                  </td>
-
-                  <td>
-                    <div class="question-actions">
-                      <button
-                        class="mini-btn"
-                        data-q-edit="${esc(q.id)}"
-                      >
-                        編集
-                      </button>
-
-                      <button
-                        class="mini-btn"
-                        data-q-pub="${esc(q.id)}"
-                      >
-                        ${
-                          pub
-                            ? '非公開'
-                            : '公開'
-                        }
-                      </button>
-
-                      <button
-                        class="mini-btn mini-btn-danger"
-                        data-q-del="${esc(q.id)}"
-                      >
-                        削除
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              `
-            }
+  <span class="muted">
+    ${esc(q.id)}
+    ・
+    ${source}
+    ${
+      (q.tags || []).length
+        ? ' ・ ' +
+          esc(
+            q.tags.join(
+              ' / '
+            )
           )
-          .join('')
+        : ''
+    }
+  </span>
+</td>
+
+<td>
+  ${esc(
+    KagakuData.units.find(
+      u =>
+        u.id ===
+        q.unitId
+    )?.title ||
+      q.unitId ||
+      '—'
+  )}
+</td>
+
+<td>
+  ${esc(q.difficulty)}
+</td>
+
+<td>
+  <span class="publish-dot">
+    ${
+      pub
+        ? '🟢 公開'
+        : '⚪ 非公開'
+    }
+  </span>
+</td>
+
+<td>
+
+<div class="question-actions">
+
+<button
+  class="mini-btn"
+  data-q-edit="${esc(q.id)}"
+>
+  編集
+</button>
+
+<button
+  class="mini-btn"
+  data-q-pub="${esc(q.id)}"
+>
+  ${
+    pub
+      ? '非公開'
+      : '公開'
+  }
+</button>
+
+<button
+  class="mini-btn mini-btn-danger"
+  data-q-del="${esc(q.id)}"
+>
+  削除
+</button>
+
+</div>
+
+</td>
+
+</tr>
+`;
+        }).join('')
       : `
-        <tr>
-          <td
-            colspan="6"
-            class="empty"
-          >
-            該当する問題はありません。
-          </td>
-        </tr>
-      `;
+<tr>
+  <td
+    colspan="6"
+    class="empty"
+  >
+    該当する問題はありません。
+  </td>
+</tr>
+`;
 
   document
-    .querySelectorAll(
-      '[data-q-edit]'
-    )
+    .querySelectorAll('[data-q-edit]')
     .forEach(
-      b=>
-        b.onclick=
-          ()=>
+      b =>
+        b.onclick =
+          () =>
             openEditor(
               b.dataset.qEdit
             )
     );
 
   document
-    .querySelectorAll(
-      '[data-q-pub]'
-    )
+    .querySelectorAll('[data-q-pub]')
     .forEach(
-      b=>
-        b.onclick=
-          ()=>
+      b =>
+        b.onclick =
+          () =>
             togglePublished(
               b.dataset.qPub
             )
     );
 
   document
-    .querySelectorAll(
-      '[data-q-del]'
-    )
+    .querySelectorAll('[data-q-del]')
     .forEach(
-      b=>
-        b.onclick=
-          ()=>
+      b =>
+        b.onclick =
+          () =>
             deleteQuestion(
               b.dataset.qDel
             )
@@ -1785,144 +1703,131 @@ function renderQuestionAdmin(){
       '.question-check'
     )
     .forEach(
-      b=>
-        b.onchange=
+      b =>
+        b.onchange =
           updateSelectedCount
     );
 
   updateSelectedCount();
 }
 
-function selectedQuestionIds(){
+function selectedQuestionIds() {
   return [
     ...document.querySelectorAll(
       '.question-check:checked'
     )
   ].map(
-    x=>x.value
+    x => x.value
   );
 }
 
-function updateSelectedCount(){
-  const n=
+function updateSelectedCount() {
+  const n =
     selectedQuestionIds()
       .length;
 
-  if(
+  if (
     $('question-selected-count')
-  ){
+  ) {
     $('question-selected-count')
-      .textContent=
-        `${n}件選択`;
+      .textContent =
+      `${n}件選択`;
   }
 }
 
-function openEditor(id=''){
-  const item=
+function openEditor(id = '') {
+  const item =
     adminQuestions().find(
-      x=>x.q.id===id
+      x => x.q.id === id
     );
 
-  const q=
+  const q =
     item?.q;
 
-  const r=
+  const r =
     item?.r;
 
   $('question-form').reset();
 
-  $('q-id').value=
-    id||'';
+  $('q-id').value =
+    id || '';
 
-  $('editor-title').textContent=
+  $('editor-title').textContent =
     id
       ? '問題を編集'
       : '問題を追加';
 
-  if(id&&q){
-    $('q-unit').value=
+  if (id && q) {
+    $('q-unit').value =
       q.unitId;
 
-    $('q-difficulty').value=
-      q.difficulty||
+    $('q-difficulty').value =
+      q.difficulty ||
       'basic';
 
-    $('q-question').value=
-      q.question||
-      '';
+    $('q-question').value =
+      q.question || '';
 
-    for(
-      let i=0;
-      i<4;
-      i++
-    ){
-      $(`q-opt-${i}`).value=
-        q.options?.[i]||
-        '';
+    for (let i = 0; i < 4; i++) {
+      $(`q-opt-${i}`).value =
+        q.options?.[i] || '';
     }
 
-    $('q-answer').value=
+    $('q-answer').value =
       String(
-        q.answerIndex??0
+        q.answerIndex ?? 0
       );
 
-    $('q-explanation').value=
-      q.explanation||
-      '';
+    $('q-explanation').value =
+      q.explanation || '';
 
-    $('q-tags').value=
+    $('q-tags').value =
       (
-        r?.tags||
-        q.tags||
+        r?.tags ||
+        q.tags ||
         []
       ).join(', ');
 
-    $('q-published').value=
+    $('q-published').value =
       String(
         r
           ? r.is_published
           : true
       );
-  }else{
-    $('q-unit').value=
-      KagakuData
-        .units[0]?.id||
+  } else {
+    $('q-unit').value =
+      KagakuData.units[0]?.id ||
       '';
 
-    $('q-difficulty').value=
+    $('q-difficulty').value =
       'basic';
 
-    $('q-tags').value=
+    $('q-tags').value =
       '';
 
-    $('q-published').value=
+    $('q-published').value =
       'true';
   }
 
-  $('question-editor').hidden=
+  $('question-editor').hidden =
     false;
 }
 
-async function saveQuestion(e){
+async function saveQuestion(e) {
   e.preventDefault();
 
-  const id=
-    $('q-id').value.trim()||
+  const id =
+    $('q-id').value.trim() ||
     `q-${Date.now()}`;
 
-  const old=
-    adminQuestions().find(
-      x=>x.q.id===id
-    )?.r;
+  const old =
+    adminQuestions()
+      .find(
+        x =>
+          x.q.id === id
+      )?.r;
 
-  const user=
-    (
-      await supabaseClient
-        .auth
-        .getUser()
-    ).data.user;
-
-  const payload={
+  const payload = {
     id,
 
     unit_id:
@@ -1932,16 +1837,14 @@ async function saveQuestion(e){
       $('q-difficulty').value,
 
     question:
-      $('q-question')
-        .value
-        .trim(),
+      $('q-question').value.trim(),
 
     options:
-      [0,1,2,3].map(
-        i=>
-          $(`q-opt-${i}`)
-            .value
-            .trim()
+      [0, 1, 2, 3].map(
+        i =>
+          $(
+            `q-opt-${i}`
+          ).value.trim()
       ),
 
     answer_index:
@@ -1959,70 +1862,70 @@ async function saveQuestion(e){
         .value
         .split(',')
         .map(
-          x=>x.trim()
+          x => x.trim()
         )
         .filter(Boolean),
 
     is_published:
-      $('q-published')
-        .value===
+      $('q-published').value ===
       'true',
 
     is_deleted:
       false,
 
     created_by:
-      old?.created_by||
-      user?.id||
+      old?.created_by ||
+      (
+        await supabaseClient
+          .auth
+          .getUser()
+      ).data.user?.id ||
       null,
 
     updated_at:
       new Date().toISOString()
   };
 
-  const {error}=
+  const { error } =
     await supabaseClient
       .from('questions')
       .upsert(
         payload,
         {
-          onConflict:'id'
+          onConflict:
+            'id'
         }
       );
 
-  if(error){
+  if (error) {
     alert(
-      '保存できませんでした: '+
+      '保存できませんでした: ' +
       error.message
     );
-    return
+
+    return;
   }
 
-  $('question-editor').hidden=
+  $('question-editor').hidden =
     true;
 
   await loadQuestionAdminData();
 }
 
-async function togglePublished(id){
-  const item=
-    adminQuestions().find(
-      x=>x.q.id===id
-    );
+async function togglePublished(id) {
+  const item =
+    adminQuestions()
+      .find(
+        x =>
+          x.q.id === id
+      );
 
-  if(!item)return;
+  if (!item) return;
 
-  const r=
+  const r =
     item.r;
 
-  const user=
-    (
-      await supabaseClient
-        .auth
-        .getUser()
-    ).data.user;
-
-  const payload={
+  const payload = {
     id,
 
     unit_id:
@@ -2035,17 +1938,17 @@ async function togglePublished(id){
       item.q.question,
 
     options:
-      item.q.options||[],
+      item.q.options || [],
 
     answer_index:
-      item.q.answerIndex||0,
+      item.q.answerIndex || 0,
 
     explanation:
-      item.q.explanation||'',
+      item.q.explanation || '',
 
     tags:
-      r?.tags||
-      item.q.tags||
+      r?.tags ||
+      item.q.tags ||
       [],
 
     is_published:
@@ -2057,59 +1960,61 @@ async function togglePublished(id){
       false,
 
     created_by:
-      r?.created_by||
-      user?.id||
+      r?.created_by ||
+      (
+        await supabaseClient
+          .auth
+          .getUser()
+      ).data.user?.id ||
       null,
 
     updated_at:
       new Date().toISOString()
   };
 
-  const {error}=
+  const { error } =
     await supabaseClient
       .from('questions')
       .upsert(
         payload,
         {
-          onConflict:'id'
+          onConflict:
+            'id'
         }
       );
 
-  if(error){
+  if (error) {
     alert(
-      '公開状態を変更できませんでした: '+
+      '公開状態を変更できませんでした: ' +
       error.message
     );
-  }else{
+  } else {
     await loadQuestionAdminData();
   }
 }
 
-async function deleteQuestion(id){
-  if(
+async function deleteQuestion(id) {
+  if (
     !confirm(
       'この問題を削除しますか？\n生徒側からも表示されなくなります。'
     )
-  )return;
+  ) {
+    return;
+  }
 
-  const item=
-    adminQuestions().find(
-      x=>x.q.id===id
-    );
+  const item =
+    adminQuestions()
+      .find(
+        x =>
+          x.q.id === id
+      );
 
-  if(!item)return;
+  if (!item) return;
 
-  const r=
+  const r =
     item.r;
 
-  const user=
-    (
-      await supabaseClient
-        .auth
-        .getUser()
-    ).data.user;
-
-  const payload={
+  const payload = {
     id,
 
     unit_id:
@@ -2122,17 +2027,17 @@ async function deleteQuestion(id){
       item.q.question,
 
     options:
-      item.q.options||[],
+      item.q.options || [],
 
     answer_index:
-      item.q.answerIndex||0,
+      item.q.answerIndex || 0,
 
     explanation:
-      item.q.explanation||'',
+      item.q.explanation || '',
 
     tags:
-      r?.tags||
-      item.q.tags||
+      r?.tags ||
+      item.q.tags ||
       [],
 
     is_published:
@@ -2142,73 +2047,74 @@ async function deleteQuestion(id){
       true,
 
     created_by:
-      r?.created_by||
-      user?.id||
+      r?.created_by ||
+      (
+        await supabaseClient
+          .auth
+          .getUser()
+      ).data.user?.id ||
       null,
 
     updated_at:
       new Date().toISOString()
   };
 
-  const {error}=
+  const { error } =
     await supabaseClient
       .from('questions')
       .upsert(
         payload,
         {
-          onConflict:'id'
+          onConflict:
+            'id'
         }
       );
 
-  if(error){
+  if (error) {
     alert(
-      '削除できませんでした: '+
+      '削除できませんでした: ' +
       error.message
     );
-  }else{
+  } else {
     await loadQuestionAdminData();
   }
 }
 
 async function bulkSet(
   published,
-  del=false
-){
-  const ids=
+  del = false
+) {
+  const ids =
     selectedQuestionIds();
 
-  if(!ids.length){
+  if (!ids.length) {
     alert(
       '問題を選択してください。'
     );
-    return
+
+    return;
   }
 
-  if(
-    del&&
+  if (
+    del &&
     !confirm(
       `${ids.length}問を削除しますか？`
     )
-  )return;
+  ) {
+    return;
+  }
 
-  const user=
-    (
-      await supabaseClient
-        .auth
-        .getUser()
-    ).data.user;
+  for (const id of ids) {
+    const item =
+      adminQuestions()
+        .find(
+          x =>
+            x.q.id === id
+        );
 
-  for(
-    const id of ids
-  ){
-    const item=
-      adminQuestions().find(
-        x=>x.q.id===id
-      );
+    if (!item) continue;
 
-    if(!item)continue;
-
-    const r=
+    const r =
       item.r;
 
     await supabaseClient
@@ -2227,17 +2133,17 @@ async function bulkSet(
             item.q.question,
 
           options:
-            item.q.options||[],
+            item.q.options || [],
 
           answer_index:
-            item.q.answerIndex||0,
+            item.q.answerIndex || 0,
 
           explanation:
-            item.q.explanation||'',
+            item.q.explanation || '',
 
           tags:
-            r?.tags||
-            item.q.tags||
+            r?.tags ||
+            item.q.tags ||
             [],
 
           is_published:
@@ -2249,15 +2155,20 @@ async function bulkSet(
             del,
 
           created_by:
-            r?.created_by||
-            user?.id||
+            r?.created_by ||
+            (
+              await supabaseClient
+                .auth
+                .getUser()
+            ).data.user?.id ||
             null,
 
           updated_at:
             new Date().toISOString()
         },
         {
-          onConflict:'id'
+          onConflict:
+            'id'
         }
       );
   }
@@ -2265,49 +2176,50 @@ async function bulkSet(
   await loadQuestionAdminData();
 }
 
+
+/* =========================================================
+   CSV
+========================================================= */
+
 function downloadCSV(
   name,
   text
-){
-  const blob=
+) {
+  const blob =
     new Blob(
-      ['\ufeff'+text],
+      ['\ufeff' + text],
       {
         type:
           'text/csv;charset=utf-8'
       }
     );
 
-  const url=
+  const url =
     URL.createObjectURL(
       blob
     );
 
-  const a=
-    document.createElement(
-      'a'
-    );
+  const a =
+    document.createElement('a');
 
-  a.href=url;
-  a.download=name;
+  a.href = url;
+  a.download = name;
   a.click();
 
-  URL.revokeObjectURL(
-    url
-  );
+  URL.revokeObjectURL(url);
 }
 
-function csvCell(v){
+function csvCell(v) {
   return `"${String(
-    v??''
+    v ?? ''
   ).replace(
     /"/g,
     '""'
-  )}"`
+  )}"`;
 }
 
-function exportQuestionsCSV(){
-  const rows=[
+function exportQuestionsCSV() {
+  const rows = [
     [
       'id',
       'unit_id',
@@ -2323,38 +2235,37 @@ function exportQuestionsCSV(){
       'is_published'
     ],
 
-    ...adminQuestions().map(
-      ({q,r})=>[
+    ...adminQuestions()
+      .map(({ q, r }) => [
         q.id,
         q.unitId,
         q.difficulty,
         q.question,
-        ...(q.options||[])
-          .slice(0,4),
+        ...(q.options || [])
+          .slice(0, 4),
         q.answerIndex,
         q.explanation,
         (
-          r?.tags||
-          q.tags||
+          r?.tags ||
+          q.tags ||
           []
         ).join('|'),
         r
           ? r.is_published
           : true
-      ]
-    )
+      ])
   ];
 
   downloadCSV(
     `kagaku_lab_questions_${
       new Date()
         .toISOString()
-        .slice(0,10)
+        .slice(0, 10)
     }.csv`,
 
     rows
       .map(
-        r=>
+        r =>
           r
             .map(csvCell)
             .join(',')
@@ -2363,82 +2274,85 @@ function exportQuestionsCSV(){
   );
 }
 
-function parseCSV(text){
-  const rows=[];
+function parseCSV(text) {
+  const rows = [];
 
-  let row=[];
-  let cell='';
-  let quote=false;
+  let row = [];
+  let cell = '';
+  let quote = false;
 
-  for(
-    let i=0;
-    i<text.length;
+  for (
+    let i = 0;
+    i < text.length;
     i++
-  ){
-    const ch=
+  ) {
+    const ch =
       text[i];
 
-    const next=
-      text[i+1];
+    const next =
+      text[i + 1];
 
-    if(
-      ch==='"'&&
-      quote&&
-      next==='"'
-    ){
-      cell+='"';
+    if (
+      ch === '"' &&
+      quote &&
+      next === '"'
+    ) {
+      cell += '"';
       i++;
-      continue
+      continue;
     }
 
-    if(ch==='"'){
-      quote=!quote;
-      continue
+    if (ch === '"') {
+      quote = !quote;
+      continue;
     }
 
-    if(
-      ch===','&&
+    if (
+      ch === ',' &&
       !quote
-    ){
+    ) {
       row.push(cell);
-      cell='';
-      continue
+      cell = '';
+      continue;
     }
 
-    if(
+    if (
       (
-        ch==='\n'||
-        ch==='\r'
-      )&&
+        ch === '\n' ||
+        ch === '\r'
+      ) &&
       !quote
-    ){
-      if(
-        ch==='\r'&&
-        next==='\n'
-      )i++;
+    ) {
+      if (
+        ch === '\r' &&
+        next === '\n'
+      ) {
+        i++;
+      }
 
       row.push(cell);
 
-      if(
+      if (
         row.some(
-          v=>v.trim()
+          v => v.trim()
         )
-      ){
+      ) {
         rows.push(row);
       }
 
-      row=[];
-      cell='';
-      continue
+      row = [];
+      cell = '';
+
+      continue;
     }
 
-    cell+=ch;
+    cell += ch;
   }
 
-  if(
-    cell||
+  if (
+    cell ||
     row.length
-  ){
+  ) {
     row.push(cell);
     rows.push(row);
   }
@@ -2446,60 +2360,53 @@ function parseCSV(text){
   return rows;
 }
 
-async function importQuestions(file){
-  const text=
+async function importQuestions(file) {
+  const text =
     await file.text();
 
-  const rows=
+  const rows =
     parseCSV(text);
 
-  if(rows.length<2){
+  if (rows.length < 2) {
     alert(
       'CSVにデータがありません。'
     );
-    return
+
+    return;
   }
 
-  const header=
+  const header =
     rows[0].map(
-      x=>x.trim()
+      x => x.trim()
     );
 
-  const idx=
+  const idx =
     Object.fromEntries(
       header.map(
-        (h,i)=>[
-          h,
-          i
-        ]
+        (h, i) => [h, i]
       )
     );
 
-  let ok=0;
+  let ok = 0;
 
-  const user=
-    (
-      await supabaseClient
-        .auth
-        .getUser()
-    ).data.user;
-
-  for(
+  for (
     const r of rows.slice(1)
-  ){
-    if(
-      !r[idx.id]||
+  ) {
+    if (
+      !r[idx.id] ||
       !r[idx.question]
-    )continue;
+    ) {
+      continue;
+    }
 
-    const options=
-      [1,2,3,4].map(
-        n=>
+    const options =
+      [1, 2, 3, 4].map(
+        n =>
           r[
             idx[
-              'option'+n
+              'option' + n
             ]
-          ]||''
+          ] || ''
       );
 
     await supabaseClient
@@ -2510,13 +2417,11 @@ async function importQuestions(file){
             r[idx.id],
 
           unit_id:
-            r[idx.unit_id]||
-            KagakuData
-              .units[0]
-              .id,
+            r[idx.unit_id] ||
+            KagakuData.units[0].id,
 
           difficulty:
-            r[idx.difficulty]||
+            r[idx.difficulty] ||
             'basic',
 
           question:
@@ -2526,46 +2431,47 @@ async function importQuestions(file){
 
           answer_index:
             Number(
-              r[
-                idx.answer_index
-              ]
-            )||0,
+              r[idx.answer_index]
+            ) || 0,
 
           explanation:
-            r[idx.explanation]||
+            r[idx.explanation] ||
             '',
 
           tags:
             (
-              r[idx.tags]||
+              r[idx.tags] ||
               ''
             )
               .split('|')
               .map(
-                x=>x.trim()
+                x => x.trim()
               )
               .filter(Boolean),
 
           is_published:
             String(
-              r[
-                idx.is_published
-              ]
-            ).toLowerCase()!==
+              r[idx.is_published]
+            ).toLowerCase() !==
             'false',
 
           is_deleted:
             false,
 
           created_by:
-            user?.id||
+            (
+              await supabaseClient
+                .auth
+                .getUser()
+            ).data.user?.id ||
             null,
 
           updated_at:
             new Date().toISOString()
         },
         {
-          onConflict:'id'
+          onConflict:
+            'id'
         }
       );
 
@@ -2579,108 +2485,127 @@ async function importQuestions(file){
   await loadQuestionAdminData();
 }
 
-/* ===== テスト管理 ===== */
 
-function toIds(v){
+/* =========================================================
+   テスト管理
+========================================================= */
+
+function toIds(v) {
   return Array.isArray(v)
     ? v
     : (
-        typeof v==='string'
+        typeof v === 'string'
           ? JSON.parse(
-              v||'[]'
+              v || '[]'
             )
           : []
       );
 }
 
-async function loadTests(){
-  if(
-    !supabaseClient||
+async function loadTests() {
+  if (
+    !supabaseClient ||
     !$('test-admin-list')
-  )return;
+  ) {
+    return;
+  }
 
   const {
     data,
     error
-  }=
+  } =
     await supabaseClient
       .from('tests')
       .select('*')
       .order(
         'created_at',
         {
-          ascending:false
+          ascending: false
         }
       );
 
-  if(error){
-    $('test-admin-list').innerHTML=
-      '<div class="empty">FINAL_SETUP.sql実行後に利用できます。</div>';
-    return
+  if (error) {
+    $('test-admin-list').innerHTML =
+      `
+<div class="empty">
+  FINAL_SETUP.sql実行後に利用できます。
+</div>
+`;
+
+    return;
   }
 
-  $('test-admin-list').innerHTML=
-    (data||[])
-      .map(
-        t=>`
-          <div class="recent-item">
-            <div>
-              <strong>
-                ${esc(t.title)}
-              </strong>
+  $('test-admin-list').innerHTML =
+    (data || [])
+      .map(t => `
+<div class="recent-item">
 
-              <br>
+  <div>
 
-              <span class="muted">
-                ${
-                  toIds(
-                    t.question_ids
-                  ).length
-                }問 ・
-                ${
-                  t.time_limit_seconds
-                    ? Math.ceil(
-                        t.time_limit_seconds/60
-                      )+'分'
-                    : '無制限'
-                } ・
-                ${
-                  t.is_published
-                    ? '公開'
-                    : '非公開'
-                }
-              </span>
-            </div>
+    <strong>
+      ${esc(t.title)}
+    </strong>
 
-            <div class="question-actions">
-              <button
-                class="mini-btn"
-                data-test-edit="${t.id}"
-              >
-                編集
-              </button>
+    <br>
 
-              <button
-                class="mini-btn mini-btn-danger"
-                data-test-del="${t.id}"
-              >
-                削除
-              </button>
-            </div>
-          </div>
-        `
-      )
-      .join('')||
-    '<div class="empty">まだテストがありません。</div>';
+    <span class="muted">
+      ${toIds(
+        t.question_ids
+      ).length}問
+      ・
+      ${
+        t.time_limit_seconds
+          ? Math.ceil(
+              t.time_limit_seconds /
+              60
+            ) + '分'
+          : '無制限'
+      }
+      ・
+      ${
+        t.is_published
+          ? '公開'
+          : '非公開'
+      }
+    </span>
+
+  </div>
+
+  <div class="question-actions">
+
+    <button
+      class="mini-btn"
+      data-test-edit="${t.id}"
+    >
+      編集
+    </button>
+
+    <button
+      class="mini-btn mini-btn-danger"
+      data-test-del="${t.id}"
+    >
+      削除
+    </button>
+
+  </div>
+
+</div>
+`)
+      .join('') ||
+    `
+<div class="empty">
+  まだテストがありません。
+</div>
+`;
 
   document
     .querySelectorAll(
       '[data-test-edit]'
     )
     .forEach(
-      b=>
-        b.onclick=
-          ()=>
+      b =>
+        b.onclick =
+          () =>
             openTestEditor(
               b.dataset.testEdit
             )
@@ -2691,14 +2616,14 @@ async function loadTests(){
       '[data-test-del]'
     )
     .forEach(
-      b=>
-        b.onclick=
-          async ()=>{
-            if(
+      b =>
+        b.onclick =
+          async () => {
+            if (
               confirm(
                 'このテストを削除しますか？'
               )
-            ){
+            ) {
               await supabaseClient
                 .from('tests')
                 .delete()
@@ -2707,51 +2632,54 @@ async function loadTests(){
                   b.dataset.testDel
                 );
 
-              loadTests();
+              await loadTests();
             }
           }
     );
 }
 
 async function openTestEditor(
-  id=''
-){
-  const t=
+  id = ''
+) {
+  const t =
     id
       ? (
           await supabaseClient
             .from('tests')
             .select('*')
-            .eq('id',id)
+            .eq('id', id)
             .single()
         ).data
       : null;
 
   $('test-form').reset();
 
-  $('test-id').value=id;
+  $('test-id').value =
+    id;
 
-  $('test-title').value=
-    t?.title||'';
+  $('test-title').value =
+    t?.title || '';
 
-  $('test-description').value=
-    t?.description||'';
+  $('test-description').value =
+    t?.description || '';
 
-  $('test-limit').value=
+  $('test-limit').value =
     t
       ? Math.round(
           Number(
-            t.time_limit_seconds||0
-          )/60
+            t.time_limit_seconds ||
+            0
+          ) / 60
         )
       : 0;
 
-  $('test-published').value=
+  $('test-published').value =
     String(
-      t?.is_published||false
+      t?.is_published ||
+      false
     );
 
-  const selected=
+  const selected =
     new Set(
       t
         ? toIds(
@@ -2760,74 +2688,240 @@ async function openTestEditor(
         : []
     );
 
-  $('test-question-picker')
-    .innerHTML=
-      adminQuestions()
-        .filter(
-          x=>
-            x.r?.is_published!==false
-        )
-        .map(
-          ({q})=>`
-            <label
-              style="
-                display:block;
-                padding:6px;
-                border-bottom:1px solid var(--border-color)
-              "
-            >
-              <input
-                type="checkbox"
-                class="test-q-check"
-                value="${esc(q.id)}"
-                ${
-                  selected.has(q.id)
-                    ? 'checked'
-                    : ''
-                }
-              >
+  $('test-question-picker').innerHTML =
+    adminQuestions()
+      .filter(
+        x =>
+          x.r?.is_published !==
+          false
+      )
+      .map(({ q }) => `
+<label
+  style="
+    display:block;
+    padding:6px;
+    border-bottom:1px solid var(--border-color)
+  "
+>
 
-              ${esc(q.id)}
-              ${esc(q.question)}
-            </label>
-          `
-        )
-        .join('');
+  <input
+    type="checkbox"
+    class="test-q-check"
+    value="${esc(q.id)}"
+    ${
+      selected.has(q.id)
+        ? 'checked'
+        : ''
+    }
+  >
 
-  $('test-editor').hidden=
+  ${esc(q.id)}
+  ${esc(q.question)}
+
+</label>
+`)
+      .join('');
+
+  $('test-editor').hidden =
     false;
 }
 
-async function saveTest(e){
+
+/* =========================================================
+   ★ 修正版テスト保存
+========================================================= */
+
+async function saveTest(e) {
   e.preventDefault();
 
-  const id=
+  const id =
     $('test-id').value;
 
-  const ids=
-    [
-      ...document.querySelectorAll(
-        '.test-q-check:checked'
-      )
-    ].map(
-      x=>x.value
-    );
+  const ids = [
+    ...document.querySelectorAll(
+      '.test-q-check:checked'
+    )
+  ].map(
+    x => x.value
+  );
 
-  if(!ids.length){
+  if (!ids.length) {
     alert(
       '少なくとも1問選択してください。'
     );
-    return
+
+    return;
   }
 
-  const user=
+  const user =
     (
       await supabaseClient
         .auth
         .getUser()
     ).data.user;
 
-  const payload={
+  const now =
+    new Date().toISOString();
+
+
+  /*
+   * ================================================
+   * 重要
+   *
+   * 内蔵問題をテストに使う場合、
+   * KagakuData.questionsには存在していても
+   * Supabaseのquestionsテーブルには存在しない
+   * 場合がある。
+   *
+   * そのままtests.question_idsだけに保存すると、
+   * 生徒側のtest.jsが問題を取得できない。
+   *
+   * そこで、テスト保存時に
+   * Supabaseに存在しない内蔵問題を
+   * questionsテーブルへ自動登録する。
+   * ================================================
+   */
+
+  const localMap =
+    new Map(
+      (KagakuData.questions || [])
+        .map(
+          q => [
+            String(q.id),
+            q
+          ]
+        )
+    );
+
+
+  for (
+    const questionId
+    of ids
+  ) {
+    const localQ =
+      localMap.get(
+        String(questionId)
+      );
+
+    /*
+     * KagakuDataにもない問題なら
+     * ここでは処理しない。
+     */
+    if (!localQ) {
+      continue;
+    }
+
+
+    /*
+     * すでにSupabaseにあるか確認
+     */
+    const cloudQ =
+      cloudQuestionRows.find(
+        r =>
+          String(r.id) ===
+          String(questionId)
+      );
+
+
+    /*
+     * すでに存在するなら
+     * 何もしない。
+     */
+    if (cloudQ) {
+      continue;
+    }
+
+
+    /*
+     * 内蔵問題をSupabaseへ登録
+     */
+    const questionPayload = {
+      id:
+        localQ.id,
+
+      unit_id:
+        localQ.unitId,
+
+      difficulty:
+        localQ.difficulty ||
+        'basic',
+
+      question:
+        localQ.question ||
+        '',
+
+      options:
+        Array.isArray(
+          localQ.options
+        )
+          ? localQ.options
+          : [],
+
+      answer_index:
+        Number(
+          localQ.answerIndex
+        ) || 0,
+
+      explanation:
+        localQ.explanation ||
+        '',
+
+      tags:
+        Array.isArray(
+          localQ.tags
+        )
+          ? localQ.tags
+          : [],
+
+      is_published:
+        true,
+
+      is_deleted:
+        false,
+
+      created_by:
+        user?.id ||
+        null,
+
+      updated_at:
+        now
+    };
+
+
+    const {
+      error:
+        questionError
+    } =
+      await supabaseClient
+        .from('questions')
+        .upsert(
+          questionPayload,
+          {
+            onConflict:
+              'id'
+          }
+        );
+
+
+    if (questionError) {
+      alert(
+        'テスト用の問題を保存できませんでした: ' +
+        questionError.message
+      );
+
+      return;
+    }
+  }
+
+
+  /*
+   * ================================================
+   * 問題の登録が完了してから
+   * testsテーブルへテストを保存
+   * ================================================
+   */
+
+  const payload = {
     title:
       $('test-title')
         .value
@@ -2845,127 +2939,169 @@ async function saveTest(e){
       Math.max(
         0,
         Number(
-          $('test-limit').value
-        )||0
-      )*60,
+          $('test-limit')
+            .value
+        ) || 0
+      ) * 60,
 
     is_published:
       $('test-published')
-        .value==='true',
+        .value ===
+      'true',
 
     created_by:
-      user?.id||null,
+      user?.id ||
+      null,
 
     updated_at:
-      new Date().toISOString()
+      now
   };
 
-  const {error}=
-    id
-      ? await supabaseClient
-          .from('tests')
-          .update(payload)
-          .eq('id',id)
-      : await supabaseClient
-          .from('tests')
-          .insert(payload);
 
-  if(error){
-    alert(
-      'テストを保存できませんでした: '+
-      error.message
-    );
-    return
+  let result;
+
+
+  if (id) {
+    result =
+      await supabaseClient
+        .from('tests')
+        .update(payload)
+        .eq(
+          'id',
+          id
+        );
+  } else {
+    result =
+      await supabaseClient
+        .from('tests')
+        .insert(
+          payload
+        );
   }
 
-  $('test-editor').hidden=
+
+  if (result.error) {
+    alert(
+      'テストを保存できませんでした: ' +
+      result.error.message
+    );
+
+    return;
+  }
+
+
+  $('test-editor').hidden =
     true;
 
-  await loadTests();
+
+  /*
+   * 問題一覧も再読み込みして
+   * Supabaseへ追加された問題を
+   * 管理画面にも反映する。
+   */
+  await loadQuestionAdminData();
 }
 
-/* ===== お知らせ ===== */
 
-async function loadAnnouncements(){
-  if(
-    !supabaseClient||
+/* =========================================================
+   お知らせ
+========================================================= */
+
+async function loadAnnouncements() {
+  if (
+    !supabaseClient ||
     !$('announcement-list')
-  )return;
+  ) {
+    return;
+  }
 
   const {
     data,
     error
-  }=
+  } =
     await supabaseClient
       .from('announcements')
       .select('*')
       .order(
         'created_at',
         {
-          ascending:false
+          ascending: false
         }
       );
 
-  if(error){
-    $('announcement-list').innerHTML=
-      '<div class="empty">FINAL_SETUP.sql実行後に利用できます。</div>';
-    return
+  if (error) {
+    $('announcement-list').innerHTML =
+      `
+<div class="empty">
+  FINAL_SETUP.sql実行後に利用できます。
+</div>
+`;
+
+    return;
   }
 
-  $('announcement-list').innerHTML=
-    (data||[])
-      .map(
-        a=>`
-          <div class="recent-item">
-            <div>
-              <strong>
-                ${esc(a.title)}
-              </strong>
+  $('announcement-list').innerHTML =
+    (data || [])
+      .map(a => `
+<div class="recent-item">
 
-              <br>
+  <div>
 
-              <span class="muted">
-                ${
-                  a.is_published
-                    ? '公開'
-                    : '非公開'
-                } ・
-                ${esc(a.body).slice(
-                  0,
-                  70
-                )}
-              </span>
-            </div>
+    <strong>
+      ${esc(a.title)}
+    </strong>
 
-            <div class="question-actions">
-              <button
-                class="mini-btn"
-                data-ann-edit="${a.id}"
-              >
-                編集
-              </button>
+    <br>
 
-              <button
-                class="mini-btn mini-btn-danger"
-                data-ann-del="${a.id}"
-              >
-                削除
-              </button>
-            </div>
-          </div>
-        `
-      )
-      .join('')||
-    '<div class="empty">お知らせはありません。</div>';
+    <span class="muted">
+      ${
+        a.is_published
+          ? '公開'
+          : '非公開'
+      }
+      ・
+      ${esc(
+        a.body
+      ).slice(0, 70)}
+    </span>
+
+  </div>
+
+  <div class="question-actions">
+
+    <button
+      class="mini-btn"
+      data-ann-edit="${a.id}"
+    >
+      編集
+    </button>
+
+    <button
+      class="mini-btn mini-btn-danger"
+      data-ann-del="${a.id}"
+    >
+      削除
+    </button>
+
+  </div>
+
+</div>
+`)
+      .join('') ||
+    `
+<div class="empty">
+  お知らせはありません。
+</div>
+`;
 
   document
     .querySelectorAll(
       '[data-ann-edit]'
     )
     .forEach(
-      b=>
-        b.onclick=
-          ()=>
+      b =>
+        b.onclick =
+          () =>
             openAnnouncementEditor(
               b.dataset.annEdit
             )
@@ -2976,78 +3112,78 @@ async function loadAnnouncements(){
       '[data-ann-del]'
     )
     .forEach(
-      b=>
-        b.onclick=
-          async ()=>{
-            if(
+      b =>
+        b.onclick =
+          async () => {
+            if (
               confirm(
                 '削除しますか？'
               )
-            ){
+            ) {
               await supabaseClient
-                .from(
-                  'announcements'
-                )
+                .from('announcements')
                 .delete()
                 .eq(
                   'id',
                   b.dataset.annDel
                 );
 
-              loadAnnouncements();
+              await loadAnnouncements();
             }
           }
     );
 }
 
 async function openAnnouncementEditor(
-  id=''
-){
-  const a=
+  id = ''
+) {
+  const a =
     id
       ? (
           await supabaseClient
-            .from(
-              'announcements'
-            )
+            .from('announcements')
             .select('*')
-            .eq('id',id)
+            .eq(
+              'id',
+              id
+            )
             .single()
         ).data
       : null;
 
-  $('announcement-id').value=
+  $('announcement-id').value =
     id;
 
-  $('announcement-title').value=
-    a?.title||'';
+  $('announcement-title').value =
+    a?.title || '';
 
-  $('announcement-body').value=
-    a?.body||'';
+  $('announcement-body').value =
+    a?.body || '';
 
-  $('announcement-published').value=
+  $('announcement-published').value =
     String(
-      a?.is_published??true
+      a?.is_published ??
+      true
     );
 
-  $('announcement-editor').hidden=
+  $('announcement-editor').hidden =
     false;
 }
 
-async function saveAnnouncement(e){
+async function saveAnnouncement(e) {
   e.preventDefault();
 
-  const id=
+  const id =
     $('announcement-id').value;
 
-  const user=
+  const user =
     (
       await supabaseClient
         .auth
         .getUser()
     ).data.user;
 
-  const payload={
+  const payload = {
     title:
       $('announcement-title')
         .value
@@ -3060,47 +3196,55 @@ async function saveAnnouncement(e){
 
     is_published:
       $('announcement-published')
-        .value==='true',
+        .value ===
+      'true',
 
     created_by:
-      user?.id||null,
+      user?.id ||
+      null,
 
     updated_at:
       new Date().toISOString()
   };
 
-  const {error}=
+  const {
+    error
+  } =
     id
       ? await supabaseClient
           .from('announcements')
           .update(payload)
-          .eq('id',id)
+          .eq('id', id)
       : await supabaseClient
           .from('announcements')
           .insert(payload);
 
-  if(error){
+  if (error) {
     alert(
-      'お知らせを保存できませんでした: '+
+      'お知らせを保存できませんでした: ' +
       error.message
     );
-    return
+
+    return;
   }
 
-  $('announcement-editor').hidden=
+  $('announcement-editor').hidden =
     true;
 
   await loadAnnouncements();
 }
 
-/* =========================
+
+/* =========================================================
    初期化
-========================= */
+========================================================= */
 
 document.addEventListener(
   'DOMContentLoaded',
-  ()=>{
-    try{
+  () => {
+
+    try {
+
       $('login-form')
         ?.addEventListener(
           'submit',
@@ -3110,7 +3254,7 @@ document.addEventListener(
       $('logout-btn')
         ?.addEventListener(
           'click',
-          async ()=>{
+          async () => {
             await supabaseClient
               ?.auth
               .signOut();
@@ -3143,27 +3287,31 @@ document.addEventListener(
           exportStudentsCSV
         );
 
+
+      /* 問題管理 */
+
       $('add-question-btn')
         ?.addEventListener(
           'click',
-          ()=>openEditor()
+          () =>
+            openEditor()
         );
 
       $('close-editor')
         ?.addEventListener(
           'click',
-          ()=>{
+          () => {
             $('question-editor')
-              .hidden=true
+              .hidden = true;
           }
         );
 
       $('cancel-editor')
         ?.addEventListener(
           'click',
-          ()=>{
+          () => {
             $('question-editor')
-              .hidden=true
+              .hidden = true;
           }
         );
 
@@ -3200,14 +3348,14 @@ document.addEventListener(
       $('select-all-questions')
         ?.addEventListener(
           'change',
-          e=>{
+          e => {
             document
               .querySelectorAll(
                 '.question-check'
               )
               .forEach(
-                x=>
-                  x.checked=
+                x =>
+                  x.checked =
                     e.target.checked
               );
 
@@ -3218,19 +3366,25 @@ document.addEventListener(
       $('bulk-publish-btn')
         ?.addEventListener(
           'click',
-          ()=>bulkSet(true)
+          () =>
+            bulkSet(true)
         );
 
       $('bulk-unpublish-btn')
         ?.addEventListener(
           'click',
-          ()=>bulkSet(false)
+          () =>
+            bulkSet(false)
         );
 
       $('bulk-delete-btn')
         ?.addEventListener(
           'click',
-          ()=>bulkSet(false,true)
+          () =>
+            bulkSet(
+              false,
+              true
+            )
         );
 
       $('export-questions-btn')
@@ -3242,40 +3396,44 @@ document.addEventListener(
       $('import-questions-input')
         ?.addEventListener(
           'change',
-          e=>{
-            if(
+          e => {
+            if (
               e.target.files[0]
-            ){
+            ) {
               importQuestions(
                 e.target.files[0]
               );
             }
 
-            e.target.value='';
+            e.target.value = '';
           }
         );
+
+
+      /* テスト */
 
       $('new-test-btn')
         ?.addEventListener(
           'click',
-          ()=>openTestEditor()
+          () =>
+            openTestEditor()
         );
 
       $('close-test-editor')
         ?.addEventListener(
           'click',
-          ()=>{
+          () => {
             $('test-editor')
-              .hidden=true
+              .hidden = true;
           }
         );
 
       $('cancel-test-editor')
         ?.addEventListener(
           'click',
-          ()=>{
+          () => {
             $('test-editor')
-              .hidden=true
+              .hidden = true;
           }
         );
 
@@ -3285,27 +3443,31 @@ document.addEventListener(
           saveTest
         );
 
+
+      /* お知らせ */
+
       $('new-announcement-btn')
         ?.addEventListener(
           'click',
-          ()=>openAnnouncementEditor()
+          () =>
+            openAnnouncementEditor()
         );
 
       $('close-announcement-editor')
         ?.addEventListener(
           'click',
-          ()=>{
+          () => {
             $('announcement-editor')
-              .hidden=true
+              .hidden = true;
           }
         );
 
       $('cancel-announcement-editor')
         ?.addEventListener(
           'click',
-          ()=>{
+          () => {
             $('announcement-editor')
-              .hidden=true
+              .hidden = true;
           }
         );
 
@@ -3315,22 +3477,24 @@ document.addEventListener(
           saveAnnouncement
         );
 
+
       setup();
 
-    }catch(error){
+    } catch (error) {
+
       console.error(
         '管理者画面の初期化に失敗しました:',
         error
       );
 
-      const status=
+      const status =
         $('login-status');
 
-      if(status){
-        status.textContent=
+      if (status) {
+        status.textContent =
           '管理者画面の初期化に失敗しました。ページを再読み込みしてください。';
 
-        status.className=
+        status.className =
           'status danger-status';
       }
     }
