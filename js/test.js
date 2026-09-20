@@ -146,7 +146,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       );
 
       if (test) {
-        void startTest(test);
+        startTest(test);
       }
     });
   });
@@ -158,14 +158,29 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function startTest(test) {
     const ids = toIds(test.question_ids);
 
-    // 内蔵問題を先に使用し、存在しないIDはSupabaseから取得する。
+    /*
+     * 管理者がテストに登録した問題IDから問題を取得。
+     *
+     * 通常問題でもテスト専用問題でも、
+     * KagakuData.questions に存在していれば出題できます。
+     *
+     * 将来的に管理画面で「テスト専用問題」を追加した場合も、
+     * question_ids に登録されていれば同じ仕組みで扱えます。
+     */
+    // まず内蔵問題から探し、見つからない問題だけSupabaseから取得する。
+    // これにより、既存テストが「q1」などの内蔵問題IDを持っていても動作する。
     const localQuestions = window.KagakuData?.questions || [];
     const localMap = new Map(localQuestions.map(q => [String(q.id), q]));
-    let questions = ids.map(id => localMap.get(String(id))).filter(Boolean);
+    const resolved = [];
+    const missingIds = [];
 
-    const missingIds = ids.filter(id => !localMap.has(String(id)));
+    ids.forEach(id => {
+      const q = localMap.get(String(id));
+      if (q) resolved.push(q);
+      else missingIds.push(String(id));
+    });
 
-    if (missingIds.length) {
+    if (missingIds.length && c) {
       try {
         const { data: cloudRows, error: cloudError } = await c
           .from("questions")
@@ -173,11 +188,11 @@ document.addEventListener("DOMContentLoaded", async () => {
           .in("id", missingIds);
 
         if (cloudError) {
-          console.error("テスト問題の取得に失敗:", cloudError);
+          console.warn("Supabaseからテスト問題を取得できませんでした:", cloudError.message);
         } else {
-          const cloudQuestions = (cloudRows || [])
-            .filter(r => r.is_deleted !== true && r.is_published !== false)
-            .map(r => ({
+          (cloudRows || []).forEach(r => {
+            if (r.is_deleted === true || r.is_published === false) return;
+            resolved.push({
               id: r.id,
               unitId: r.unit_id,
               difficulty: r.difficulty || "basic",
@@ -186,27 +201,33 @@ document.addEventListener("DOMContentLoaded", async () => {
               answerIndex: Number(r.answer_index) || 0,
               explanation: r.explanation || "",
               tags: Array.isArray(r.tags) ? r.tags : []
-            }));
-          questions = questions.concat(cloudQuestions);
+            });
+          });
         }
       } catch (e) {
-        console.error("テスト問題の取得中にエラー:", e);
+        console.warn("テスト問題の取得中にエラー:", e);
       }
     }
 
-    const questionMap = new Map(questions.map(q => [String(q.id), q]));
-    questions = ids.map(id => questionMap.get(String(id))).filter(Boolean);
+    // question_idsに登録された順番を維持しつつ、取得できた問題だけにする。
+    const questionMap = new Map(resolved.map(q => [String(q.id), q]));
+    const resolvedQuestions = ids
+      .map(id => questionMap.get(String(id)))
+      .filter(Boolean);
 
-    if (questions.length !== ids.length) {
-      const found = new Set(questions.map(q => String(q.id)));
+    if (resolvedQuestions.length !== ids.length) {
+      const found = new Set(resolvedQuestions.map(q => String(q.id)));
       const missing = ids.filter(id => !found.has(String(id)));
-      console.error("見つからないテスト問題ID:", missing);
+      console.error("テスト問題が見つかりません:", missing);
+
       alert(
-        "テストに登録された問題を取得できませんでした。\n" +
+        "このテストに登録された問題の一部が見つかりません。\n" +
         "見つからない問題ID: " + missing.join(", ")
       );
       return;
     }
+
+    let questions = resolvedQuestions;
 
     // ----------------------------------------------------------
     // 問題順をランダム化
@@ -327,6 +348,17 @@ document.addEventListener("DOMContentLoaded", async () => {
           >
             <span class="eyebrow">
               第${currentIndex + 1}問 / ${questions.length}
+            </span>
+
+            <span
+              id="test-timer"
+              class="timer"
+            >
+              ${
+                timeLimit > 0
+                  ? `制限時間：${formatTimeLimit(timeLimit)}`
+                  : "制限時間：なし"
+              }
             </span>
           </div>
 
