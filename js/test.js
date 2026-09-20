@@ -156,7 +156,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ------------------------------------------------------------
 
   async function startTest(test) {
-    const ids = toIds(test.question_ids);
+    const ids = toIds(test.question_ids).map(String);
 
     /*
      * 管理者がテストに登録した問題IDから問題を取得。
@@ -167,67 +167,53 @@ document.addEventListener("DOMContentLoaded", async () => {
      * 将来的に管理画面で「テスト専用問題」を追加した場合も、
      * question_ids に登録されていれば同じ仕組みで扱えます。
      */
-    // まず内蔵問題から探し、見つからない問題だけSupabaseから取得する。
-    // これにより、既存テストが「q1」などの内蔵問題IDを持っていても動作する。
-    const localQuestions = window.KagakuData?.questions || [];
-    const localMap = new Map(localQuestions.map(q => [String(q.id), q]));
-    const resolved = [];
+    const localMap = new Map((window.KagakuData?.questions || []).map(q => [String(q.id), q]));
+    const questions = [];
     const missingIds = [];
 
-    ids.forEach(id => {
-      const q = localMap.get(String(id));
-      if (q) resolved.push(q);
+    for (const id of ids) {
+      const localQ = localMap.get(String(id));
+      if (localQ) questions.push(localQ);
       else missingIds.push(String(id));
-    });
+    }
 
-    if (missingIds.length && c) {
+    if (missingIds.length) {
       try {
         const { data: cloudRows, error: cloudError } = await c
-          .from("questions")
-          .select("id,unit_id,difficulty,question,options,answer_index,explanation,tags,is_published,is_deleted")
-          .in("id", missingIds);
-
-        if (cloudError) {
-          console.warn("Supabaseからテスト問題を取得できませんでした:", cloudError.message);
-        } else {
-          (cloudRows || []).forEach(r => {
-            if (r.is_deleted === true || r.is_published === false) return;
-            resolved.push({
-              id: r.id,
-              unitId: r.unit_id,
-              difficulty: r.difficulty || "basic",
-              question: r.question || "",
-              options: Array.isArray(r.options) ? r.options : [],
-              answerIndex: Number(r.answer_index) || 0,
-              explanation: r.explanation || "",
-              tags: Array.isArray(r.tags) ? r.tags : []
+          .from('questions')
+          .select('id,unit_id,difficulty,question,options,answer_index,explanation,tags,is_published,is_deleted')
+          .in('id', missingIds);
+        if (!cloudError) {
+          for (const r of (cloudRows || [])) {
+            if (r.is_deleted === true || r.is_published === false) continue;
+            questions.push({
+              id:r.id, unitId:r.unit_id, difficulty:r.difficulty || 'basic',
+              question:r.question || '', options:Array.isArray(r.options) ? r.options : [],
+              answerIndex:Number(r.answer_index) || 0, explanation:r.explanation || '', tags:Array.isArray(r.tags) ? r.tags : []
             });
-          });
+          }
+        } else {
+          console.error('テスト問題取得エラー:', cloudError);
         }
       } catch (e) {
-        console.warn("テスト問題の取得中にエラー:", e);
+        console.error('テスト問題取得中の例外:', e);
       }
     }
 
-    // question_idsに登録された順番を維持しつつ、取得できた問題だけにする。
-    const questionMap = new Map(resolved.map(q => [String(q.id), q]));
-    const resolvedQuestions = ids
-      .map(id => questionMap.get(String(id)))
-      .filter(Boolean);
-
-    if (resolvedQuestions.length !== ids.length) {
-      const found = new Set(resolvedQuestions.map(q => String(q.id)));
-      const missing = ids.filter(id => !found.has(String(id)));
-      console.error("テスト問題が見つかりません:", missing);
-
-      alert(
-        "このテストに登録された問題の一部が見つかりません。\n" +
-        "見つからない問題ID: " + missing.join(", ")
-      );
-      return;
+    const questionMap = new Map(questions.map(q => [String(q.id), q]));
+    questions.length = 0;
+    for (const id of ids) {
+      const q = questionMap.get(String(id));
+      if (q) questions.push(q);
     }
 
-    let questions = resolvedQuestions;
+    if (questions.length !== ids.length) {
+      const found = new Set(questions.map(q => String(q.id)));
+      const missing = ids.filter(id => !found.has(String(id)));
+      alert('このテストに登録された問題の一部が見つかりません。\n見つからない問題ID: ' + missing.join(', '));
+      console.error('未解決のテスト問題:', missing);
+      return;
+    }
 
     // ----------------------------------------------------------
     // 問題順をランダム化
@@ -283,23 +269,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     // タイマー表示
     // ----------------------------------------------------------
 
-    function formatTimeLimit(seconds) {
-      const total = Math.max(0, Number(seconds) || 0);
-
-      if (total < 60) {
-        return `${total}秒`;
-      }
-
-      const minutes = Math.floor(total / 60);
-      const secs = total % 60;
-
-      if (secs === 0) {
-        return `${minutes}分`;
-      }
-
-      return `${minutes}分${secs}秒`;
-    }
-
     function updateTimer(remaining) {
       const timerElement =
         document.getElementById("test-timer");
@@ -307,16 +276,20 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!timerElement) return;
 
       if (!timeLimit) {
-        timerElement.textContent = "制限時間：なし";
+        timerElement.textContent = "時間制限なし";
         return;
       }
 
-      // 右上は「制限時間」の表記を固定し、
-      // カウントダウンで表示内容が壊れないようにする。
-      timerElement.textContent =
-        `制限時間：${formatTimeLimit(timeLimit)}`;
+      const minutes = Math.floor(remaining / 60);
+      const seconds = remaining % 60;
 
-      timerElement.classList.remove("warn");
+      timerElement.textContent =
+        `残り ${minutes}:${String(seconds).padStart(2, "0")}`;
+
+      timerElement.classList.toggle(
+        "warn",
+        remaining <= 30
+      );
     }
 
     // ----------------------------------------------------------
@@ -350,16 +323,7 @@ document.addEventListener("DOMContentLoaded", async () => {
               第${currentIndex + 1}問 / ${questions.length}
             </span>
 
-            <span
-              id="test-timer"
-              class="timer"
-            >
-              ${
-                timeLimit > 0
-                  ? `制限時間：${formatTimeLimit(timeLimit)}`
-                  : "制限時間：なし"
-              }
-            </span>
+            <span aria-hidden="true"></span>
           </div>
 
           <div
