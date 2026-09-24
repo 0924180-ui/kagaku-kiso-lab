@@ -193,85 +193,121 @@ function exportQuestionsCSV(){const rows=[['id','unit_id','difficulty','question
 function parseCSV(text){const rows=[];let row=[],cell='',quote=false;for(let i=0;i<text.length;i++){const ch=text[i],next=text[i+1];if(ch==='"'&&quote&&next==='"'){cell+='"';i++;continue}if(ch==='"'){quote=!quote;continue}if(ch===','&&!quote){row.push(cell);cell='';continue}if((ch==='\n'||ch==='\r')&&!quote){if(ch==='\r'&&next==='\n')i++;row.push(cell);if(row.some(v=>v.trim()))rows.push(row);row=[];cell='';continue}cell+=ch}if(cell||row.length){row.push(cell);rows.push(row)}return rows}
 async function importQuestions(file){const text=await file.text(),rows=parseCSV(text);if(rows.length<2){alert('CSVにデータがありません。');return}const header=rows[0].map(x=>x.trim()),idx=Object.fromEntries(header.map((h,i)=>[h,i]));let ok=0;for(const r of rows.slice(1)){if(!r[idx.id]||!r[idx.question])continue;const options=[1,2,3,4].map(n=>r[idx['option'+n]]||'');await supabaseClient.from('questions').upsert({id:r[idx.id],unit_id:r[idx.unit_id]||KagakuData.units[0].id,difficulty:r[idx.difficulty]||'basic',question:r[idx.question],options,answer_index:Number(r[idx.answer_index])||0,explanation:r[idx.explanation]||'',tags:(r[idx.tags]||'').split('|').map(x=>x.trim()).filter(Boolean),is_published:String(r[idx.is_published]).toLowerCase()!=='false',is_deleted:false,created_by:(await supabaseClient.auth.getUser()).data.user?.id||null,updated_at:new Date().toISOString()},{onConflict:'id'});ok++}alert(`${ok}問を取り込みました。`);await loadQuestionAdminData()}
 
-// ===== テスト管理 =====
-function toIds(v){return Array.isArray(v)?v:(typeof v==='string'?JSON.parse(v||'[]'):[])}
-async function loadTests(){if(!supabaseClient||!$('test-admin-list'))return;const {data,error}=await supabaseClient.from('tests').select('*').order('created_at',{ascending:false});if(error){$('test-admin-list').innerHTML='<div class="empty">FINAL_SETUP.sql実行後に利用できます。</div>';return}$('test-admin-list').innerHTML=(data||[]).map(t=>`<div class="recent-item"><div><strong>${esc(t.title)}</strong><br><span class="muted">${toIds(t.question_ids).length}問 ・ ${t.time_limit_seconds?Math.ceil(t.time_limit_seconds/60)+'分':'無制限'} ・ ${t.is_published?'公開':'非公開'}</span></div><div class="question-actions"><button class="mini-btn" data-test-edit="${t.id}">編集</button><button class="mini-btn mini-btn-danger" data-test-del="${t.id}">削除</button></div></div>`).join('')||'<div class="empty">まだテストがありません。</div>';document.querySelectorAll('[data-test-edit]').forEach(b=>b.onclick=()=>openTestEditor(b.dataset.testEdit));document.querySelectorAll('[data-test-del]').forEach(b=>b.onclick=async()=>{if(confirm('このテストを削除しますか？')){await supabaseClient.from('tests').delete().eq('id',b.dataset.testDel);loadTests()}})}
-async function openTestEditor(id=''){const t=id?(await supabaseClient.from('tests').select('*').eq('id',id).single()).data:null;$('test-form').reset();$('test-id').value=id;$('test-title').value=t?.title||'';$('test-description').value=t?.description||'';$('test-limit').value=t?Math.round(Number(t.time_limit_seconds||0)/60):0;$('test-published').value=String(t?.is_published||false);const selected=new Set(t?toIds(t.question_ids):[]);$('test-question-picker').innerHTML=adminQuestions().filter(x=>x.r?.is_published!==false).map(({q})=>`<label style="display:block;padding:6px;border-bottom:1px solid var(--border-color)"><input type="checkbox" class="test-q-check" value="${esc(q.id)}" ${selected.has(q.id)?'checked':''}> ${esc(q.id)} ${esc(q.question)}</label>`).join('');$('test-editor').hidden=false}
+// ===== テスト管理: テスト専用問題方式 =====
+function toIds(v){
+  if(Array.isArray(v)) return v;
+  if(typeof v==='string'){
+    try{const x=JSON.parse(v||'[]');return Array.isArray(x)?x:[]}catch(e){return []}
+  }
+  return [];
+}
+function testQuestionEditorRow(q={},index=0){
+  const opts=Array.isArray(q.options)?q.options:[];
+  return `<div class="test-custom-question" data-test-q-row style="border:1px solid var(--border-color);border-radius:10px;padding:14px;margin:10px 0;background:var(--surface-1,#fff)">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px">
+      <strong>問題 ${index+1}</strong>
+      <button type="button" class="mini-btn mini-btn-danger" data-test-q-remove>削除</button>
+    </div>
+    <label style="display:block;margin-bottom:8px">問題文<br><textarea data-test-q-field="question" rows="3" style="width:100%;box-sizing:border-box">${esc(q.question||'')}</textarea></label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${[0,1,2,3].map(i=>`<label>選択肢${i+1}<input type="text" data-test-q-field="option${i}" value="${esc(opts[i]||'')}" style="width:100%;box-sizing:border-box"></label>`).join('')}
+    </div>
+    <label style="display:block;margin-top:8px">正解
+      <select data-test-q-field="answerIndex" style="width:100%">
+        ${[0,1,2,3].map(i=>`<option value="${i}" ${Number(q.answer_index??q.answerIndex??0)===i?'selected':''}>${i+1}</option>`).join('')}
+      </select>
+    </label>
+    <label style="display:block;margin-top:8px">解説<br><textarea data-test-q-field="explanation" rows="3" style="width:100%;box-sizing:border-box">${esc(q.explanation||'')}</textarea></label>
+  </div>`;
+}
+function renderTestQuestionEditor(questions=[]){
+  const picker=$('test-question-picker');
+  if(!picker)return;
+  const qs=questions.length?questions:[{}];
+  picker.innerHTML=`<div id="test-custom-questions">${qs.map((q,i)=>testQuestionEditorRow(q,i)).join('')}</div>
+    <button type="button" class="btn btn-outline" id="add-test-question" style="margin-top:8px">＋問題を追加</button>`;
+  const renumber=()=>document.querySelectorAll('[data-test-q-row]').forEach((row,i)=>{const h=row.querySelector('strong');if(h)h.textContent=`問題 ${i+1}`});
+  const add=()=>{const box=$('test-custom-questions');const i=box.querySelectorAll('[data-test-q-row]').length;box.insertAdjacentHTML('beforeend',testQuestionEditorRow({},i));renumber()};
+  $('add-test-question').onclick=add;
+  picker.querySelectorAll('[data-test-q-remove]').forEach(btn=>btn.onclick=()=>{
+    const rows=picker.querySelectorAll('[data-test-q-row]');
+    if(rows.length<=1){alert('テストには少なくとも1問必要です。');return}
+    btn.closest('[data-test-q-row]').remove();renumber();
+  });
+}
+function collectTestQuestions(){
+  return [...document.querySelectorAll('[data-test-q-row]')].map(row=>{
+    const get=n=>row.querySelector(`[data-test-q-field="${n}"]`)?.value||'';
+    return {
+      question:get('question').trim(),
+      options:[0,1,2,3].map(i=>get(`option${i}`).trim()),
+      answer_index:Number(row.querySelector('[data-test-q-field="answerIndex"]')?.value||0),
+      explanation:get('explanation').trim()
+    };
+  });
+}
+async function loadTests(){
+  if(!supabaseClient||!$('test-admin-list'))return;
+  const {data,error}=await supabaseClient.from('tests').select('id,title,description,time_limit_seconds,is_published,created_at').order('created_at',{ascending:false});
+  if(error){$('test-admin-list').innerHTML='<div class="empty">テスト用SQLを実行すると利用できます。\n'+esc(error.message)+'</div>';return}
+  $('test-admin-list').innerHTML=(data||[]).map(t=>`<div class="recent-item"><div><strong>${esc(t.title)}</strong><br><span class="muted">テスト専用問題 ・ ${t.is_published?'公開':'非公開'}</span></div><div class="question-actions"><button class="mini-btn" data-test-edit="${t.id}">編集</button><button class="mini-btn mini-btn-danger" data-test-del="${t.id}">削除</button></div></div>`).join('')||'<div class="empty">まだテストがありません。</div>';
+  document.querySelectorAll('[data-test-edit]').forEach(b=>b.onclick=()=>openTestEditor(b.dataset.testEdit));
+  document.querySelectorAll('[data-test-del]').forEach(b=>b.onclick=async()=>{if(!confirm('このテストを削除しますか？'))return;const {error}=await supabaseClient.from('tests').delete().eq('id',b.dataset.testDel);if(error)alert('削除できませんでした: '+error.message);else await loadTests()});
+}
+async function openTestEditor(id=''){
+  const t=id?(await supabaseClient.from('tests').select('id,title,description,time_limit_seconds,is_published').eq('id',id).single()).data:null;
+  let questions=[];
+  if(id){
+    const {data,error}=await supabaseClient.from('test_questions').select('id,question,options,answer_index,explanation,sort_order').eq('test_id',id).order('sort_order',{ascending:true});
+    if(error){alert('テスト問題を取得できませんでした: '+error.message);return}
+    questions=data||[];
+  }
+  $('test-form').reset();
+  $('test-id').value=id;
+  $('test-title').value=t?.title||'';
+  $('test-description').value=t?.description||'';
+  $('test-limit').value=t?Math.round(Number(t.time_limit_seconds||0)/60):0;
+  $('test-published').value=String(t?.is_published||false);
+  renderTestQuestionEditor(questions);
+  $('test-editor').hidden=false;
+}
 async function saveTest(e){
   e.preventDefault();
-
-  const id=$('test-id').value;
-  const ids=[...document.querySelectorAll('.test-q-check:checked')].map(x=>x.value);
-
-  if(!ids.length){
-    alert('少なくとも1問選択してください。');
-    return;
+  const id=$('test-id').value.trim();
+  const questions=collectTestQuestions();
+  if(!questions.length){alert('少なくとも1問作成してください。');return}
+  for(let i=0;i<questions.length;i++){
+    const q=questions[i];
+    if(!q.question){alert(`問題${i+1}の問題文を入力してください。`);return}
+    if(q.options.some(x=>!x)){alert(`問題${i+1}の選択肢を4つ入力してください。`);return}
   }
-
   const user=(await supabaseClient.auth.getUser()).data.user;
   const now=new Date().toISOString();
-
-  // 内蔵問題もテストに使えるよう、Supabaseに存在しない問題を
-  // 保存時に自動でquestionsへ同期する。
-  // これにより「tests.question_idsにはq1があるが、
-  // questionsテーブルにはq1がない」という状態を防ぐ。
-  const localMap=new Map((KagakuData.questions||[]).map(q=>[String(q.id),q]));
-
-  for(const questionId of ids){
-    const localQ=localMap.get(String(questionId));
-    if(!localQ) continue;
-
-    const cloudQ=cloudQuestionRows.find(r=>String(r.id)===String(questionId));
-
-    if(!cloudQ){
-      const questionPayload={
-        id:localQ.id,
-        unit_id:localQ.unitId,
-        difficulty:localQ.difficulty||'basic',
-        question:localQ.question||'',
-        options:Array.isArray(localQ.options)?localQ.options:[],
-        answer_index:Number(localQ.answerIndex)||0,
-        explanation:localQ.explanation||'',
-        tags:Array.isArray(localQ.tags)?localQ.tags:[],
-        is_published:true,
-        is_deleted:false,
-        is_test_only:false,
-        created_by:user?.id||null,
-        updated_at:now
-      };
-
-      const {error:questionError}=await supabaseClient
-        .from('questions')
-        .upsert(questionPayload,{onConflict:'id'});
-
-      if(questionError){
-        alert('テスト用の問題を保存できませんでした: '+questionError.message);
-        return;
-      }
-    }
-  }
-
   const payload={
     title:$('test-title').value.trim(),
     description:$('test-description').value.trim(),
-    question_ids:ids,
     time_limit_seconds:Math.max(0,Number($('test-limit').value)||0)*60,
     is_published:$('test-published').value==='true',
     created_by:user?.id||null,
     updated_at:now
   };
-
-  const result=id
-    ? await supabaseClient.from('tests').update(payload).eq('id',id)
-    : await supabaseClient.from('tests').insert(payload);
-
-  if(result.error){
-    alert('テストを保存できませんでした: '+result.error.message);
-    return;
+  if(!payload.title){alert('テスト名を入力してください。');return}
+  let testId=id;
+  if(id){
+    const {error}=await supabaseClient.from('tests').update(payload).eq('id',id);
+    if(error){alert('テストを保存できませんでした: '+error.message);return}
+    const {error:delError}=await supabaseClient.from('test_questions').delete().eq('test_id',id);
+    if(delError){alert('旧テスト問題を更新できませんでした: '+delError.message);return}
+  }else{
+    const {data,error}=await supabaseClient.from('tests').insert(payload).select('id').single();
+    if(error){alert('テストを作成できませんでした: '+error.message);return}
+    testId=data.id;
   }
-
+  const rows=questions.map((q,i)=>({test_id:testId,question:q.question,options:q.options,answer_index:q.answer_index,explanation:q.explanation,sort_order:i,created_at:now,updated_at:now}));
+  const {error:qError}=await supabaseClient.from('test_questions').insert(rows);
+  if(qError){alert('テスト問題を保存できませんでした: '+qError.message);return}
   $('test-editor').hidden=true;
-  await loadQuestionAdminData();
+  await loadTests();
 }
 
 // ===== お知らせ =====
