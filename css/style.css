@@ -1244,3 +1244,29 @@ main {
 /* v8.3 個人目標・おすすめ */
 .goal-card{display:grid;grid-template-columns:1fr 170px;gap:16px;padding:18px;background:var(--panel-bg);border:1px solid var(--border-color);border-radius:14px;box-shadow:var(--shadow-sm)}
 .goal-card strong{display:block;font-size:1.35rem;margin:5px 0 10px}.goal-card small{display:block;color:var(--text-secondary);margin-top:7px}.goal-side{border-left:1px solid var(--border-color);padding-left:16px;display:grid;align-content:center;gap:4px}.goal-side span{font-size:.78rem;color:var(--text-secondary)}.goal-side b{font-size:1.15rem}@media(max-width:650px){.goal-card{grid-template-columns:1fr}.goal-side{border-left:0;border-top:1px solid var(--border-color);padding:12px 0 0}}
+/* テストで選択した選択肢 */
+.option-btn.selected {
+  background: #dbeafe !important;
+  border: 2px solid #2563eb !important;
+  color: #1e40af !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15) !important;
+  font-weight: 700;
+  position: relative;
+}
+
+/* 選択中マーク */
+.option-btn.selected::after {
+  content: "✓ 選択中";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.85em;
+  font-weight: 700;
+}
+
+/* 選択後にdisabledになっても見た目を維持 */
+.option-btn.selected:disabled {
+  opacity: 1 !important;
+  cursor: default;
+}
