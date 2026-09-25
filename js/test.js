@@ -162,9 +162,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       .from("test_questions")
       .select("*")
       .eq("test_id", test.id)
-      .order("question_order", {
-        ascending: true
-      });
+      
 
     if (questionError) {
 
