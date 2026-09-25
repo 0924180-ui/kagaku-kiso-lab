@@ -1,21 +1,13 @@
 document.addEventListener("DOMContentLoaded", async () => {
-  // Supabaseの問題・ログイン状態の読み込みが完了してから開始
   if (window.KagakuCloud?.authReady) {
     await window.KagakuCloud.authReady;
-  }
-
-  if (window.KagakuCloud?.questionsReady) {
-    await window.KagakuCloud.questionsReady;
   }
 
   const list = document.getElementById("test-list");
   const area = document.getElementById("test-area");
   const c = window.KagakuCloud?.getClient?.();
 
-  if (!list || !area) {
-    console.warn("test-list または test-area が見つかりません。");
-    return;
-  }
+  if (!list || !area) return;
 
   if (!c) {
     list.innerHTML = `
@@ -24,26 +16,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       </div>
     `;
     return;
-  }
-
-  // ------------------------------------------------------------
-  // 共通関数
-  // ------------------------------------------------------------
-
-  function toIds(value) {
-    if (Array.isArray(value)) return value;
-
-    if (typeof value === "string") {
-      try {
-        const parsed = JSON.parse(value || "[]");
-        return Array.isArray(parsed) ? parsed : [];
-      } catch (e) {
-        console.warn("question_ids の解析に失敗:", e);
-        return [];
-      }
-    }
-
-    return [];
   }
 
   function esc(value) {
@@ -59,7 +31,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     );
   }
 
-  // Fisher-Yatesシャッフル
   function shuffle(list) {
     const arr = [...list];
 
@@ -71,20 +42,31 @@ document.addEventListener("DOMContentLoaded", async () => {
     return arr;
   }
 
-  // ------------------------------------------------------------
-  // 公開テスト取得
-  // ------------------------------------------------------------
+  /*
+   * ------------------------------------------------------------
+   * 公開テスト取得
+   * ------------------------------------------------------------
+   */
 
-  const { data: tests, error } = await c.rpc("get_published_tests");
+  const {
+    data: tests,
+    error: testsError
+  } = await c
+    .from("tests")
+    .select("*")
+    .eq("is_published", true)
+    .order("created_at", {
+      ascending: false
+    });
 
-  if (error) {
-    console.error("公開テスト取得エラー:", error);
+  if (testsError) {
+    console.error("テスト取得エラー:", testsError);
 
     list.innerHTML = `
       <div class="test-card">
-        <p>テスト機能の設定がまだ完了していません。</p>
-        <p style="font-size:0.9em;opacity:0.8;">
-          管理者に設定を確認してもらってください。
+        <p>テストを読み込めませんでした。</p>
+        <p style="font-size:.9em;opacity:.7;">
+          ${esc(testsError.message)}
         </p>
       </div>
     `;
@@ -102,193 +84,180 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  // ------------------------------------------------------------
-  // テスト一覧表示
-  // ------------------------------------------------------------
+  /*
+   * ------------------------------------------------------------
+   * テスト一覧
+   * ------------------------------------------------------------
+   */
 
-  list.innerHTML = tests
-    .map(test => {
-      const ids = toIds(test.question_ids);
-      const limit = Number(test.time_limit_seconds) || 0;
+  list.innerHTML = tests.map(test => `
+    <article class="test-item">
+      <div>
+        <h2>${esc(test.title)}</h2>
 
-      return `
-        <article class="test-item">
-          <div>
-            <h2>${esc(test.title)}</h2>
+        <p>
+          ${esc(test.description || "")}
+        </p>
+      </div>
 
-            <p>${esc(test.description || "")}</p>
+      <button
+        type="button"
+        class="btn btn-primary"
+        data-test-id="${esc(test.id)}"
+      >
+        挑戦する
+      </button>
+    </article>
+  `).join("");
 
-            <div class="test-meta">
-              ${ids.length}問 ・
-              ${
-                limit
-                  ? `${Math.ceil(limit / 60)}分制限`
-                  : "時間制限なし"
-              }
-            </div>
-          </div>
+  document
+    .querySelectorAll("[data-test-id]")
+    .forEach(button => {
 
-          <button
-            class="btn btn-primary"
-            data-test="${esc(test.id)}"
-          >
-            挑戦する
-          </button>
-        </article>
-      `;
-    })
-    .join("");
+      button.addEventListener("click", async () => {
 
-  document.querySelectorAll("[data-test]").forEach(button => {
-    button.addEventListener("click", () => {
-      const test = tests.find(
-        item => String(item.id) === String(button.dataset.test)
-      );
+        const testId = button.dataset.testId;
 
-      if (test) {
-        startTest(test);
-      }
+        const test = tests.find(
+          t => String(t.id) === String(testId)
+        );
+
+        if (test) {
+          await startTest(test);
+        }
+      });
+
     });
-  });
 
-  // ------------------------------------------------------------
-  // テスト開始
-  // ------------------------------------------------------------
+  /*
+   * ------------------------------------------------------------
+   * テスト開始
+   * ------------------------------------------------------------
+   */
 
-  function startTest(test) {
-    const ids = toIds(test.question_ids);
+  async function startTest(test) {
 
     /*
-     * 管理者がテストに登録した問題IDから問題を取得。
+     * ここが今回の重要部分。
      *
-     * 通常問題でもテスト専用問題でも、
-     * KagakuData.questions に存在していれば出題できます。
+     * 以前:
      *
-     * 将来的に管理画面で「テスト専用問題」を追加した場合も、
-     * question_ids に登録されていれば同じ仕組みで扱えます。
+     * tests.question_ids
+     * ↓
+     * KagakuData.questions
+     *
+     * だったため、テスト専用問題を取得できなかった。
+     *
+     * 今回:
+     *
+     * test_questions
+     * ↓
+     * テスト専用問題を直接取得
      */
-    let questions = ids
-      .map(id =>
-        (window.KagakuData?.questions || []).find(
-          q => String(q.id) === String(id)
-        )
-      )
-      .filter(Boolean);
 
-    if (!questions.length) {
+    const {
+      data: testQuestions,
+      error: questionError
+    } = await c
+      .from("test_questions")
+      .select("*")
+      .eq("test_id", test.id)
+      .order("question_order", {
+        ascending: true
+      });
+
+    if (questionError) {
+
+      console.error(
+        "テスト問題取得エラー:",
+        questionError
+      );
+
       alert(
-        "このテストに登録された問題が見つかりません。\n" +
-        "問題が公開されているか確認してください。"
+        "テストの問題を読み込めませんでした。\n\n" +
+        questionError.message
       );
 
       return;
     }
 
-    // ----------------------------------------------------------
-    // 問題順をランダム化
-    // ----------------------------------------------------------
+    if (!testQuestions?.length) {
+
+      alert(
+        "このテストには問題が保存されていません。"
+      );
+
+      return;
+    }
+
+    /*
+     * Supabase → テスト問題形式へ変換
+     */
+
+    let questions = testQuestions.map(row => ({
+      id: row.id,
+
+      question:
+        row.question ??
+        "",
+
+      options:
+        Array.isArray(row.options)
+          ? row.options
+          : [],
+
+      answerIndex:
+        Number(
+          row.answer_index ??
+          0
+        ),
+
+      explanation:
+        row.explanation ??
+        ""
+    }));
+
+    /*
+     * 問題順をランダム化
+     */
 
     questions = shuffle(questions);
 
     let currentIndex = 0;
 
-    // q.id → 選択した選択肢番号
     const answers = {};
 
-    const startedAt = Date.now();
-
-    const timeLimit = Number(test.time_limit_seconds) || 0;
-
-    let timer = null;
     let finished = false;
 
-    // テスト一覧を隠してテスト画面を表示
+    /*
+     * テスト画面
+     */
+
     list.hidden = true;
     area.hidden = false;
 
     renderQuestion();
 
-    // ----------------------------------------------------------
-    // タイマー
-    // ----------------------------------------------------------
-
-    if (timeLimit > 0) {
-      timer = setInterval(() => {
-        if (finished) return;
-
-        const elapsed = Math.floor(
-          (Date.now() - startedAt) / 1000
-        );
-
-        const remaining = Math.max(
-          0,
-          timeLimit - elapsed
-        );
-
-        updateTimer(remaining);
-
-        if (remaining <= 0) {
-          clearInterval(timer);
-          finishTest(true);
-        }
-      }, 250);
-    }
-
-    // ----------------------------------------------------------
-    // タイマー表示
-    // ----------------------------------------------------------
-
-    function formatTimeLimit(seconds) {
-      const total = Math.max(0, Number(seconds) || 0);
-
-      if (total < 60) {
-        return `${total}秒`;
-      }
-
-      const minutes = Math.floor(total / 60);
-      const secs = total % 60;
-
-      if (secs === 0) {
-        return `${minutes}分`;
-      }
-
-      return `${minutes}分${secs}秒`;
-    }
-
-    function updateTimer(remaining) {
-      const timerElement =
-        document.getElementById("test-timer");
-
-      if (!timerElement) return;
-
-      if (!timeLimit) {
-        timerElement.textContent = "制限時間：なし";
-        return;
-      }
-
-      // 右上は「制限時間」の表記を固定し、
-      // カウントダウンで表示内容が壊れないようにする。
-      timerElement.textContent =
-        `制限時間：${formatTimeLimit(timeLimit)}`;
-
-      timerElement.classList.remove("warn");
-    }
-
-    // ----------------------------------------------------------
-    // 問題表示
-    // ----------------------------------------------------------
+    /*
+     * ----------------------------------------------------------
+     * 問題表示
+     * ----------------------------------------------------------
+     */
 
     function renderQuestion() {
+
       if (finished) return;
 
-      const q = questions[currentIndex];
+      const q =
+        questions[currentIndex];
 
       if (!q) {
-        finishTest(false);
+        finishTest();
         return;
       }
 
-      const selected = answers[q.id];
+      const selected =
+        answers[q.id];
 
       area.innerHTML = `
         <div class="test-card">
@@ -301,20 +270,12 @@ document.addEventListener("DOMContentLoaded", async () => {
               gap:12px;
             "
           >
+
             <span class="eyebrow">
-              第${currentIndex + 1}問 / ${questions.length}
+              第${currentIndex + 1}問 /
+              ${questions.length}
             </span>
 
-            <span
-              id="test-timer"
-              class="timer"
-            >
-              ${
-                timeLimit > 0
-                  ? `制限時間：${formatTimeLimit(timeLimit)}`
-                  : "制限時間：なし"
-              }
-            </span>
           </div>
 
           <div
@@ -325,9 +286,11 @@ document.addEventListener("DOMContentLoaded", async () => {
           </div>
 
           <div class="options-grid">
+
             ${
-              (q.options || [])
-                .map((option, index) => `
+              q.options.map(
+                (option, index) => `
+
                   <button
                     type="button"
                     class="option-btn ${
@@ -335,7 +298,6 @@ document.addEventListener("DOMContentLoaded", async () => {
                         ? "selected"
                         : ""
                     }"
-                    style="${selected === index ? 'border-color: var(--accent, #2f6f4e); background: var(--green-pale, #edf6ef); box-shadow: 0 0 0 2px rgba(47,111,78,.16);' : ''}"
                     data-opt="${index}"
                     ${
                       selected !== undefined
@@ -343,17 +305,21 @@ document.addEventListener("DOMContentLoaded", async () => {
                         : ""
                     }
                   >
+
                     <strong
                       style="margin-right:8px;"
                     >
                       ${index + 1}.
                     </strong>
+
                     ${esc(option)}
-                    ${selected === index ? '<span style="margin-left:10px; font-weight:700;">✓ 選択中</span>' : ''}
+
                   </button>
-                `)
-                .join("")
+
+                `
+              ).join("")
             }
+
           </div>
 
           <div
@@ -368,8 +334,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
             <span
               style="
-                font-size:0.85em;
-                opacity:0.7;
+                font-size:.85em;
+                opacity:.7;
               "
             >
               数字キー 1～4で回答 / Enterで次へ
@@ -381,7 +347,8 @@ document.addEventListener("DOMContentLoaded", async () => {
               class="btn btn-primary"
             >
               ${
-                currentIndex === questions.length - 1
+                currentIndex ===
+                questions.length - 1
                   ? "採点する"
                   : "次の問題"
               }
@@ -392,117 +359,135 @@ document.addEventListener("DOMContentLoaded", async () => {
         </div>
       `;
 
-      // --------------------------------------------------------
-      // 選択肢クリック
-      // --------------------------------------------------------
+      /*
+       * 選択肢クリック
+       */
 
       document
-        .querySelectorAll("#test-area [data-opt]")
+        .querySelectorAll(
+          "#test-area [data-opt]"
+        )
         .forEach(button => {
-          button.addEventListener("click", () => {
-            const index = Number(
-              button.dataset.opt
-            );
 
-            selectAnswer(index);
-          });
+          button.addEventListener(
+            "click",
+            () => {
+
+              const index =
+                Number(
+                  button.dataset.opt
+                );
+
+              selectAnswer(index);
+            }
+          );
+
         });
 
-      // --------------------------------------------------------
-      // 次へボタン
-      // --------------------------------------------------------
+      /*
+       * 次へ
+       */
 
       const nextButton =
-        document.getElementById("test-next");
+        document.getElementById(
+          "test-next"
+        );
 
       if (nextButton) {
+
         nextButton.addEventListener(
           "click",
           goToNextQuestion
         );
-      }
 
-      // タイマー表示を現在値に更新
-      if (timeLimit) {
-        const elapsed = Math.floor(
-          (Date.now() - startedAt) / 1000
-        );
-
-        updateTimer(
-          Math.max(0, timeLimit - elapsed)
-        );
       }
     }
 
-    // ----------------------------------------------------------
-    // 回答
-    // ----------------------------------------------------------
+    /*
+     * ----------------------------------------------------------
+     * 回答
+     * ----------------------------------------------------------
+     */
 
     function selectAnswer(index) {
+
       if (finished) return;
 
-      const q = questions[currentIndex];
+      const q =
+        questions[currentIndex];
 
       if (!q) return;
 
-      // すでに回答済みなら変更不可
-      if (answers[q.id] !== undefined) {
-        return;
-      }
+      /*
+       * すでに回答済みなら変更不可
+       */
 
-      // 選択肢の範囲チェック
       if (
-        index < 0 ||
-        index >= (q.options || []).length
+        answers[q.id] !== undefined
       ) {
         return;
       }
 
       answers[q.id] = index;
 
+      /*
+       * 再描画することで、
+       * 選択したボタンに selected クラスを付ける
+       */
+
       renderQuestion();
 
-      /*
-       * 「次へ」ボタンにフォーカス。
-       *
-       * これにより、
-       * 数字キーで回答
-       * ↓
-       * Enter
-       *
-       * という流れが自然に使えます。
-       */
       const nextButton =
-        document.getElementById("test-next");
+        document.getElementById(
+          "test-next"
+        );
 
       if (nextButton) {
         nextButton.focus();
       }
     }
 
-    // ----------------------------------------------------------
-    // 次の問題
-    // ----------------------------------------------------------
+    /*
+     * ----------------------------------------------------------
+     * 次の問題
+     * ----------------------------------------------------------
+     */
 
     function goToNextQuestion() {
+
       if (finished) return;
 
-      const q = questions[currentIndex];
+      const q =
+        questions[currentIndex];
 
       if (!q) return;
 
-      // 未回答なら進ませない
-      if (answers[q.id] === undefined) {
-        alert("選択肢を1つ選んでください。");
+      /*
+       * 未回答なら進ませない
+       */
+
+      if (
+        answers[q.id] === undefined
+      ) {
+
+        alert(
+          "選択肢を1つ選んでください。"
+        );
+
         return;
       }
 
-      // 最後の問題
+      /*
+       * 最後の問題
+       */
+
       if (
         currentIndex >=
         questions.length - 1
       ) {
-        finishTest(false);
+
+        finishTest();
+
         return;
       }
 
@@ -511,56 +496,47 @@ document.addEventListener("DOMContentLoaded", async () => {
       renderQuestion();
     }
 
-    // ----------------------------------------------------------
-    // キーボード操作
-    // ----------------------------------------------------------
+    /*
+     * ----------------------------------------------------------
+     * キーボード
+     * ----------------------------------------------------------
+     */
 
     function handleKeydown(event) {
+
       if (finished) return;
 
       /*
-       * テキスト入力中などはショートカットを発動させない。
+       * 1～4
        */
-      const target = event.target;
 
       if (
-        target &&
-        (
-          target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.tagName === "SELECT"
-        )
+        ["1", "2", "3", "4"]
+          .includes(event.key)
       ) {
-        return;
-      }
 
-      // --------------------------------------------------------
-      // 1～4 → 選択肢
-      // --------------------------------------------------------
-
-      if (
-        ["1", "2", "3", "4"].includes(event.key)
-      ) {
         const index =
           Number(event.key) - 1;
 
-        const q = questions[currentIndex];
+        const q =
+          questions[currentIndex];
 
         if (!q) return;
 
-        // 回答済みなら何もしない
-        if (answers[q.id] !== undefined) {
+        /*
+         * 回答済みなら再回答しない
+         */
+
+        if (
+          answers[q.id] !== undefined
+        ) {
           return;
         }
 
-        const optionButtons =
-          document.querySelectorAll(
-            "#test-area [data-opt]"
-          );
-
-        const button = optionButtons[index];
-
-        if (!button || button.disabled) {
+        if (
+          index >=
+          q.options.length
+        ) {
           return;
         }
 
@@ -571,46 +547,35 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      // --------------------------------------------------------
-      // Enter → 次へ
-      // --------------------------------------------------------
+      /*
+       * Enter
+       */
 
       if (event.key === "Enter") {
-        const nextButton =
-          document.getElementById("test-next");
-
-        if (!nextButton) return;
 
         event.preventDefault();
-        event.stopPropagation();
 
         goToNextQuestion();
       }
     }
 
-    /*
-     * テスト開始時にキーボードイベントを登録。
-     * capture=true にして、他の処理に奪われにくくする。
-     */
     document.addEventListener(
       "keydown",
       handleKeydown,
       true
     );
 
-    // ----------------------------------------------------------
-    // テスト終了
-    // ----------------------------------------------------------
+    /*
+     * ----------------------------------------------------------
+     * テスト終了
+     * ----------------------------------------------------------
+     */
 
-    async function finishTest(timeout) {
+    async function finishTest() {
+
       if (finished) return;
 
       finished = true;
-
-      if (timer) {
-        clearInterval(timer);
-        timer = null;
-      }
 
       document.removeEventListener(
         "keydown",
@@ -618,73 +583,89 @@ document.addEventListener("DOMContentLoaded", async () => {
         true
       );
 
-      const elapsed = Math.round(
-        (Date.now() - startedAt) / 1000
-      );
-
       let score = 0;
 
       questions.forEach(q => {
+
         if (
-          answers[q.id] === q.answerIndex
+          answers[q.id] ===
+          q.answerIndex
         ) {
           score++;
         }
+
       });
 
-      // --------------------------------------------------------
-      // ログインユーザー取得
-      // --------------------------------------------------------
+      /*
+       * ログインユーザー
+       */
 
       let userId = null;
 
       try {
-        const sessionResult =
-          await c.auth.getSession();
+
+        const {
+          data
+        } = await c.auth.getSession();
 
         userId =
-          sessionResult?.data?.session?.user?.id ||
+          data?.session?.user?.id ||
           null;
+
       } catch (e) {
+
         console.warn(
-          "ログインユーザー取得に失敗:",
+          "ユーザー取得失敗:",
           e
         );
       }
 
-      // --------------------------------------------------------
-      // テスト結果保存
-      // --------------------------------------------------------
+      /*
+       * 結果保存
+       */
 
       if (userId) {
-        const { error: saveError } =
-          await c
-            .from("test_results")
-            .insert({
-              test_id: test.id,
-              user_id: userId,
-              score,
-              total: questions.length,
-              time_seconds: elapsed,
-              answers
-            });
+
+        const {
+          error: saveError
+        } = await c
+          .from("test_results")
+          .insert({
+
+            test_id:
+              test.id,
+
+            user_id:
+              userId,
+
+            score,
+
+            total:
+              questions.length,
+
+            answers
+
+          });
 
         if (saveError) {
+
           console.warn(
-            "テスト結果の保存に失敗:",
+            "テスト結果保存失敗:",
             saveError.message
           );
         }
       }
 
-      // --------------------------------------------------------
-      // 結果表示
-      // --------------------------------------------------------
+      /*
+       * 結果表示
+       */
 
       const percentage =
-        questions.length > 0
+        questions.length
           ? Math.round(
-              (score / questions.length) * 100
+              score /
+              questions.length *
+              100
             )
           : 0;
 
@@ -692,7 +673,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         <div class="test-card">
 
           <div class="eyebrow">
-            ${timeout ? "時間終了" : "テスト完了"}
+            テスト完了
           </div>
 
           <h2 style="text-align:center;">
@@ -705,14 +686,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
           <p style="text-align:center;">
             正答率 ${percentage}%
-            ・
-            所要 ${Math.floor(elapsed / 60)}分${elapsed % 60}秒
           </p>
 
           <div class="answer-review">
+
             ${
-              questions
-                .map((q, index) => {
+              questions.map(
+                (q, index) => {
+
                   const isCorrect =
                     answers[q.id] ===
                     q.answerIndex;
@@ -726,7 +707,9 @@ document.addEventListener("DOMContentLoaded", async () => {
                         margin-bottom:16px;
                         padding:12px;
                         border-radius:8px;
-                        background:var(--surface-2, rgba(0,0,0,0.03));
+                        background:
+                          var(--surface-2,
+                          rgba(0,0,0,.03));
                       "
                     >
 
@@ -739,7 +722,9 @@ document.addEventListener("DOMContentLoaded", async () => {
                         }
                       </strong>
 
-                      <div style="margin-top:6px;">
+                      <div
+                        style="margin-top:6px;"
+                      >
                         ${
                           userAnswer === undefined
                             ? "未回答"
@@ -748,15 +733,19 @@ document.addEventListener("DOMContentLoaded", async () => {
                         }
                       </div>
 
-                      <div style="margin-top:6px;">
+                      <div
+                        style="margin-top:6px;"
+                      >
                         正解：
-                        ${Number(q.answerIndex) + 1}番
+                        ${Number(
+                          q.answerIndex
+                        ) + 1}番
                       </div>
 
                       <div
                         style="
                           margin-top:8px;
-                          opacity:0.9;
+                          opacity:.9;
                         "
                       >
                         ${esc(
@@ -767,9 +756,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
                     </div>
                   `;
-                })
-                .join("")
+                }
+              ).join("")
             }
+
           </div>
 
           <div
@@ -778,6 +768,7 @@ document.addEventListener("DOMContentLoaded", async () => {
               margin-top:18px;
             "
           >
+
             <button
               type="button"
               class="btn btn-outline"
@@ -785,22 +776,18 @@ document.addEventListener("DOMContentLoaded", async () => {
             >
               テスト一覧へ
             </button>
+
           </div>
 
         </div>
       `;
 
-      const backButton =
-        document.getElementById("back-tests");
-
-      if (backButton) {
-        backButton.addEventListener(
+      document
+        .getElementById("back-tests")
+        ?.addEventListener(
           "click",
-          () => {
-            location.reload();
-          }
+          () => location.reload()
         );
-      }
     }
   }
 });
